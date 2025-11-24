@@ -1,0 +1,1 @@
+// AvatarModel placeholder
