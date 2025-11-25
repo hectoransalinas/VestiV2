@@ -104,6 +104,17 @@ const DEMO_PRODUCT = {
     "https://images.pexels.com/photos/7671166/pexels-photo-7671166.jpeg?auto=compress&cs=tinysrgb&w=800",
 };
 
+type ProductFromShopify = {
+  productId?: string | null;
+  productHandle?: string | null;
+  productTitle?: string | null;
+  shop?: string | null;
+};
+
+type ProductPageVestiDemoProps = {
+  productFromShopify?: ProductFromShopify;
+};
+
 type LastRecState = {
   tallaSugerida: string;
   resumenZonas: string;
@@ -111,11 +122,37 @@ type LastRecState = {
   tag: string;
 } | null;
 
-export const ProductPageVestiDemo: React.FC = () => {
+export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({ productFromShopify }) => {
   const [selectedSizeId, setSelectedSizeId] = useState<string>(
     DEMO_GARMENTS[1].id // default M
   );
   const [lastRec, setLastRec] = useState<LastRecState>(null);
+  const hasRealProduct =
+    !!productFromShopify &&
+    !!(
+      productFromShopify.productId ||
+      productFromShopify.productHandle ||
+      productFromShopify.productTitle ||
+      productFromShopify.shop
+    );
+
+  const displayProduct = useMemo(() => {
+    const name =
+      hasRealProduct && productFromShopify?.productTitle?.trim()
+        ? productFromShopify.productTitle.trim()
+        : DEMO_PRODUCT.name;
+
+    const subtitle = hasRealProduct
+      ? "Recomendación de talle para este producto de tu tienda"
+      : DEMO_PRODUCT.subtitle;
+
+    return {
+      ...DEMO_PRODUCT,
+      name,
+      subtitle,
+    };
+  }, [hasRealProduct, productFromShopify]);
+
 
   const selectedGarment = useMemo(
     () => DEMO_GARMENTS.find((g) => g.id === selectedSizeId) ?? DEMO_GARMENTS[0],
@@ -194,11 +231,11 @@ export const ProductPageVestiDemo: React.FC = () => {
     try {
       return new Intl.NumberFormat("es-AR", {
         style: "currency",
-        currency: DEMO_PRODUCT.currency,
+        currency: displayProduct.currency,
         maximumFractionDigits: 0,
-      }).format(DEMO_PRODUCT.price);
+      }).format(displayProduct.price);
     } catch {
-      return `$${DEMO_PRODUCT.price.toLocaleString("es-AR")}`;
+      return `$${displayProduct.price.toLocaleString("es-AR")}`;
     }
   })();
 
@@ -262,7 +299,7 @@ export const ProductPageVestiDemo: React.FC = () => {
         }}
       >
         Inicio / Camperas /{" "}
-        <span style={{ color: "#111827" }}>{DEMO_PRODUCT.name}</span>
+        <span style={{ color: "#111827" }}>{displayProduct.name}</span>
       </div>
 
       <div
@@ -284,7 +321,7 @@ export const ProductPageVestiDemo: React.FC = () => {
               color: "#111827",
             }}
           >
-            {DEMO_PRODUCT.name}
+            {displayProduct.name}
           </h1>
           <p
             style={{
@@ -293,7 +330,7 @@ export const ProductPageVestiDemo: React.FC = () => {
               color: "#4b5563",
             }}
           >
-            {DEMO_PRODUCT.subtitle}
+            {displayProduct.subtitle}
           </p>
         </div>
 
@@ -349,8 +386,8 @@ export const ProductPageVestiDemo: React.FC = () => {
             }}
           >
             <img
-              src={DEMO_PRODUCT.imageUrl}
-              alt={DEMO_PRODUCT.name}
+              src={displayProduct.imageUrl}
+              alt={displayProduct.name}
               style={{
                 width: "100%",
                 height: "auto",
@@ -411,7 +448,7 @@ export const ProductPageVestiDemo: React.FC = () => {
                   color: "#374151",
                 }}
               >
-                Color: <strong>{DEMO_PRODUCT.colorName}</strong>
+                Color: <strong>{displayProduct.colorName}</strong>
               </span>
             </div>
           </div>
