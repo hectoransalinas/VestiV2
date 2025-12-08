@@ -7,7 +7,7 @@ type ProductFromShopify = {
   productTitle?: string | null;
   shop?: string | null;
   imageUrl?: string | null;
-  price?: string | null;      // viene como string desde la URL
+  price?: string | null; // lo manejamos como string en este nivel
   currency?: string | null;
   colorName?: string | null;
 };
@@ -16,6 +16,10 @@ type FullProductFromParent = {
   id: string | number;
   title: string;
   category: string;
+  imageUrl?: string;
+  price?: number;
+  currency?: string;
+  colorName?: string;
   variants: {
     id: string | number;
     sizeLabel?: string;
@@ -46,7 +50,7 @@ function getProductFromQuery(): ProductFromShopify | null {
   const productTitle = params.get("productTitle");
   const shop = params.get("shop");
 
-  // 🔧 imageUrl viene url-encoded en la query → la decodificamos
+  // imageUrl puede venir url-encoded en la query → intentamos decodificar
   const rawImageUrl = params.get("imageUrl");
   let imageUrl: string | null = null;
   if (rawImageUrl) {
@@ -83,7 +87,7 @@ export default function App() {
   const [fullProductFromParent, setFullProductFromParent] =
     useState<FullProductFromParent | null>(null);
 
-  // Cargar datos desde la URL al montar
+  // 1) Cargar datos básicos desde la URL al montar
   useEffect(() => {
     const product = getProductFromQuery();
 
@@ -101,7 +105,8 @@ export default function App() {
     setProductFromShopify(product);
   }, []);
 
-  // Handshake con el parent (vesti-loader.js) para recibir VESTI_PRODUCT
+  // 2) Handshake con el parent (vesti-loader.js) para recibir VESTI_PRODUCT
+  //    y usar esos datos como fuente de verdad (imagen, precio, etc.).
   useEffect(() => {
     const listener = (event: MessageEvent) => {
       if (!event.data) return;
@@ -117,11 +122,29 @@ export default function App() {
       }
 
       if (payload.type === "vesti:product" && payload.payload) {
+        const fullProduct = payload.payload as FullProductFromParent;
+
         console.log(
           "[VestiAI] Producto completo recibido vía postMessage:",
-          payload.payload
+          fullProduct
         );
-        setFullProductFromParent(payload.payload as FullProductFromParent);
+        setFullProductFromParent(fullProduct);
+
+        // 🔧 Parcheamos productFromShopify con los datos buenos del loader
+        setProductFromShopify((prev) => {
+          if (!prev) return prev;
+
+          return {
+            ...prev,
+            imageUrl: fullProduct.imageUrl || prev.imageUrl || null,
+            price:
+              fullProduct.price != null
+                ? String(fullProduct.price)
+                : prev.price ?? null,
+            currency: fullProduct.currency || prev.currency || null,
+            colorName: fullProduct.colorName || prev.colorName || null,
+          };
+        });
       }
     };
 
