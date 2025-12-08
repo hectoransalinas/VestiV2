@@ -38,7 +38,8 @@ type FullProductFromParent = {
 };
 
 // ---------------------------------------
-// Leer datos simples desde el querystring
+// Leer datos básicos desde el querystring
+// (NO usamos la imageUrl de la query)
 // ---------------------------------------
 function getProductFromQuery(): ProductFromShopify | null {
   if (typeof window === "undefined") return null;
@@ -49,17 +50,6 @@ function getProductFromQuery(): ProductFromShopify | null {
   const productHandle = params.get("productHandle");
   const productTitle = params.get("productTitle");
   const shop = params.get("shop");
-
-  // imageUrl puede venir url-encoded en la query → intentamos decodificar
-  const rawImageUrl = params.get("imageUrl");
-  let imageUrl: string | null = null;
-  if (rawImageUrl) {
-    try {
-      imageUrl = decodeURIComponent(rawImageUrl);
-    } catch {
-      imageUrl = rawImageUrl;
-    }
-  }
 
   const price = params.get("price");
   const currency = params.get("currency");
@@ -74,7 +64,7 @@ function getProductFromQuery(): ProductFromShopify | null {
     productHandle,
     productTitle,
     shop,
-    imageUrl,
+    imageUrl: null, // 👈 imageUrl se completará SOLO con el loader
     price,
     currency,
     colorName,
@@ -106,7 +96,7 @@ export default function App() {
   }, []);
 
   // 2) Handshake con el parent (vesti-loader.js) para recibir VESTI_PRODUCT
-  //    y usar esos datos como fuente de verdad (imagen, precio, etc.).
+  //    y usar ESA imageUrl como fuente de verdad.
   useEffect(() => {
     const listener = (event: MessageEvent) => {
       if (!event.data) return;
@@ -130,19 +120,24 @@ export default function App() {
         );
         setFullProductFromParent(fullProduct);
 
-        // 🔧 Parcheamos productFromShopify con los datos buenos del loader
+        // 👇 SIEMPRE usamos la imageUrl del loader.
         setProductFromShopify((prev) => {
-          if (!prev) return prev;
+          const base: ProductFromShopify =
+            prev ?? {
+              productId: null,
+              productHandle: null,
+              productTitle: fullProduct.title ?? null,
+              shop: null,
+              imageUrl: null,
+              price: null,
+              currency: null,
+              colorName: null,
+            };
 
           return {
-            ...prev,
-            imageUrl: fullProduct.imageUrl || prev.imageUrl || null,
-            price:
-              fullProduct.price != null
-                ? String(fullProduct.price)
-                : prev.price ?? null,
-            currency: fullProduct.currency || prev.currency || null,
-            colorName: fullProduct.colorName || prev.colorName || null,
+            ...base,
+            imageUrl: fullProduct.imageUrl || base.imageUrl,
+            // No tocamos price / currency / colorName para mantener el $100 y demás.
           };
         });
       }
