@@ -141,7 +141,7 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({ prod
       productFromShopify.shop
     );
 
-      const displayProduct = useMemo(() => {
+    const displayProduct = useMemo(() => {
     const name =
       hasRealProduct && productFromShopify?.productTitle?.trim()
         ? productFromShopify.productTitle.trim()
@@ -151,24 +151,10 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({ prod
       ? "Recomendación de talle para este producto de tu tienda"
       : DEMO_PRODUCT.subtitle;
 
-    // 🔧 Tomamos la imageUrl que venga y la normalizamos
-    let imageUrl: string =
+    const imageUrl =
       hasRealProduct && productFromShopify?.imageUrl
         ? productFromShopify.imageUrl
         : DEMO_PRODUCT.imageUrl;
-
-    try {
-      // Si viene url-encoded (con %2F, %3A, etc.), la decodificamos
-      if (imageUrl && imageUrl.includes("%")) {
-        const decoded = decodeURIComponent(imageUrl);
-        // Solo la reemplazamos si realmente parece una URL http(s)
-        if (decoded.startsWith("http://") || decoded.startsWith("https://")) {
-          imageUrl = decoded;
-        }
-      }
-    } catch (e) {
-      console.warn("[VestiAI] No se pudo decodificar imageUrl:", e);
-    }
 
     const price =
       hasRealProduct && productFromShopify?.price
@@ -195,7 +181,6 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({ prod
       colorName,
     };
   }, [hasRealProduct, productFromShopify]);
-
 
 
 
@@ -760,3 +745,6 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({ prod
     </div>
   );
 };
+
+
+export default ProductPageVestiDemo;
