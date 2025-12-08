@@ -6,7 +6,12 @@ type ProductFromShopify = {
   productHandle?: string | null;
   productTitle?: string | null;
   shop?: string | null;
+  imageUrl?: string | null;
+  price?: string | null;
+  currency?: string | null;
+  colorName?: string | null;
 };
+
 
 type ShopifyVariantFromParent = {
   id: string | number;
@@ -41,6 +46,12 @@ function getProductFromQuery(): ProductFromShopify | null {
   const productTitle = params.get("productTitle");
   const shop = params.get("shop");
 
+  // Nuevos datos que el loader ya manda en la URL
+  const imageUrl = params.get("imageUrl");
+  const price = params.get("price");
+  const currency = params.get("currency");
+  const colorName = params.get("colorName");
+
   if (!productId && !productHandle && !productTitle && !shop) {
     return null;
   }
@@ -50,6 +61,10 @@ function getProductFromQuery(): ProductFromShopify | null {
     productHandle,
     productTitle,
     shop,
+    imageUrl,
+    price,
+    currency,
+    colorName,
   };
 }
 
