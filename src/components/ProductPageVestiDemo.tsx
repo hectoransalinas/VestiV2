@@ -109,7 +109,12 @@ type ProductFromShopify = {
   productHandle?: string | null;
   productTitle?: string | null;
   shop?: string | null;
+  imageUrl?: string | null;
+  price?: string | null;
+  currency?: string | null;
+  colorName?: string | null;
 };
+
 
 type ProductPageVestiDemoProps = {
   productFromShopify?: ProductFromShopify;
@@ -136,7 +141,7 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({ prod
       productFromShopify.shop
     );
 
-  const displayProduct = useMemo(() => {
+    const displayProduct = useMemo(() => {
     const name =
       hasRealProduct && productFromShopify?.productTitle?.trim()
         ? productFromShopify.productTitle.trim()
@@ -146,12 +151,37 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({ prod
       ? "Recomendación de talle para este producto de tu tienda"
       : DEMO_PRODUCT.subtitle;
 
+    const imageUrl =
+      hasRealProduct && productFromShopify?.imageUrl
+        ? productFromShopify.imageUrl
+        : DEMO_PRODUCT.imageUrl;
+
+    const price =
+      hasRealProduct && productFromShopify?.price
+        ? Number(productFromShopify.price)
+        : DEMO_PRODUCT.price;
+
+    const currency =
+      hasRealProduct && productFromShopify?.currency
+        ? productFromShopify.currency
+        : DEMO_PRODUCT.currency;
+
+    const colorName =
+      hasRealProduct && productFromShopify?.colorName
+        ? productFromShopify.colorName
+        : DEMO_PRODUCT.colorName;
+
     return {
       ...DEMO_PRODUCT,
       name,
       subtitle,
+      imageUrl,
+      price,
+      currency,
+      colorName,
     };
   }, [hasRealProduct, productFromShopify]);
+
 
 
   const selectedGarment = useMemo(
