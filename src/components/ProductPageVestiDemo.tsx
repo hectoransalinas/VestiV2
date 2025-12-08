@@ -127,10 +127,7 @@ export const ProductPageVestiDemo: React.FC<Props> = ({
       // Normalizamos los casos típicos de Shopify: //cdn.shopify.com/...
       if (raw.startsWith("//")) {
         imageUrl = `https:${raw}`;
-      } else if (
-        raw.startsWith("http://") ||
-        raw.startsWith("https://")
-      ) {
+      } else if (raw.startsWith("http://") || raw.startsWith("https://")) {
         imageUrl = raw;
       } else {
         // Último recurso: lo usamos tal cual
@@ -260,7 +257,7 @@ export const ProductPageVestiDemo: React.FC<Props> = ({
 
       <VestiProductEmbed
         garment={selectedGarment}
-        category="remera" // más adelante usaremos la categoría real
+        category="remera" // después lo conectamos con la categoría real
         userMeasures={userMeasures}
         onUserMeasuresChange={setUserMeasures}
       />
@@ -268,5 +265,5 @@ export const ProductPageVestiDemo: React.FC<Props> = ({
   );
 };
 
-// Export default también, por si en algún lado se importa como default.
+// Export default también, para que el import actual siga funcionando.
 export default ProductPageVestiDemo;
