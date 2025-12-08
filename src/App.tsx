@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { ProductPageVestiDemo } from "./components/ProductPageVestiDemo";
+import { useEffect, useState } from "react";
+import ProductPageVestiDemo from "./components/ProductPageVestiDemo";
 
 type ProductFromShopify = {
   productId?: string | null;
@@ -7,35 +7,35 @@ type ProductFromShopify = {
   productTitle?: string | null;
   shop?: string | null;
   imageUrl?: string | null;
-  price?: string | null;
+  price?: string | null;      // viene como string desde la URL
   currency?: string | null;
   colorName?: string | null;
 };
 
-
-type ShopifyVariantFromParent = {
-  id: string | number;
-  sizeLabel?: string;
-  measures?: {
-    hombros?: number;
-    pecho?: number;
-    cintura?: number;
-    largo_torso?: number;
-    largoTorso?: number;
-    stretch?: number;
-    ease?: string;
-  };
-  stretchPct?: number;
-  easePreset?: string;
-};
-
-export type ShopifyFullProductFromParent = {
+type FullProductFromParent = {
   id: string | number;
   title: string;
   category: string;
-  variants: ShopifyVariantFromParent[];
+  variants: {
+    id: string | number;
+    sizeLabel?: string;
+    measures?: {
+      hombros?: number;
+      pecho?: number;
+      cintura?: number;
+      largo_torso?: number;
+      largoTorso?: number;
+      stretch?: number;
+      ease?: string;
+    };
+    stretchPct?: number;
+    easePreset?: string;
+  }[];
 };
 
+// ---------------------------------------
+// Leer datos simples desde el querystring
+// ---------------------------------------
 function getProductFromQuery(): ProductFromShopify | null {
   if (typeof window === "undefined") return null;
 
@@ -46,7 +46,6 @@ function getProductFromQuery(): ProductFromShopify | null {
   const productTitle = params.get("productTitle");
   const shop = params.get("shop");
 
-  // Nuevos datos que el loader ya manda en la URL
   const imageUrl = params.get("imageUrl");
   const price = params.get("price");
   const currency = params.get("currency");
@@ -68,86 +67,78 @@ function getProductFromQuery(): ProductFromShopify | null {
   };
 }
 
-export function App() {
-  const productFromShopify = useMemo(getProductFromQuery, []);
+export default function App() {
+  const [productFromShopify, setProductFromShopify] =
+    useState<ProductFromShopify | null>(null);
   const [fullProductFromParent, setFullProductFromParent] =
-    useState<ShopifyFullProductFromParent | null>(null);
+    useState<FullProductFromParent | null>(null);
 
-  const hasProduct =
-    !!productFromShopify &&
-    !!(
-      productFromShopify.productId ||
-      productFromShopify.productHandle ||
-      productFromShopify.productTitle ||
-      productFromShopify.shop
-    );
-
+  // Cargar datos desde la URL al montar
   useEffect(() => {
-    if (hasProduct && productFromShopify) {
+    const product = getProductFromQuery();
+
+    if (product) {
       console.log(
         "[VestiAI] Datos de producto recibidos desde Shopify (URL):",
-        productFromShopify
+        product
       );
     } else {
-      console.log("[VestiAI] No se recibieron datos de producto en la URL.");
+      console.log(
+        "[VestiAI] No se recibieron datos de producto en la URL."
+      );
     }
-  }, [hasProduct, productFromShopify]);
 
-  // Handshake con la página Shopify (parent) para recibir VESTI_PRODUCT completo
+    setProductFromShopify(product);
+  }, []);
+
+  // Handshake con el parent (vesti-loader.js) para recibir VESTI_PRODUCT
   useEffect(() => {
-    function handleMessage(event: MessageEvent) {
-      const data = event.data;
-      if (!data) return;
+    const listener = (event: MessageEvent) => {
+      if (!event.data) return;
 
-      let payload: any = data;
-      if (typeof data === "string") {
+      let payload: any = event.data;
+
+      if (typeof payload === "string") {
         try {
-          payload = JSON.parse(data);
+          payload = JSON.parse(payload);
         } catch {
           return;
         }
       }
 
       if (payload.type === "vesti:product" && payload.payload) {
-        setFullProductFromParent(
-          payload.payload as ShopifyFullProductFromParent
-        );
         console.log(
           "[VestiAI] Producto completo recibido vía postMessage:",
           payload.payload
         );
+        setFullProductFromParent(payload.payload as FullProductFromParent);
       }
-    }
+    };
 
-    window.addEventListener("message", handleMessage);
+    window.addEventListener("message", listener);
 
-    // Avisar al parent que el iframe está listo para recibir el producto
     try {
       if (window.parent && window.parent !== window) {
         window.parent.postMessage({ type: "vesti:ready" }, "*");
         console.log("[VestiAI] Mensaje vesti:ready enviado al parent.");
       }
     } catch (err) {
-      console.warn("[VestiAI] No se pudo enviar vesti:ready al parent:", err);
+      console.warn("[VestiAI] Error enviando vesti:ready:", err);
     }
 
-    return () => {
-      window.removeEventListener("message", handleMessage);
-    };
+    return () => window.removeEventListener("message", listener);
   }, []);
 
   return (
-    <>
-      {hasProduct && productFromShopify && (
+    <div style={{ width: "100%", height: "100%", overflowY: "auto" }}>
+      {/* Barra de debug con info básica del producto */}
+      {productFromShopify && (
         <div
           style={{
-            background: "#111",
+            background: "#000",
             color: "#fff",
             padding: "8px 12px",
             fontSize: 12,
-            fontFamily:
-              "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
-            borderBottom: "1px solid #333",
           }}
         >
           <strong>Vesti AI · Datos de producto desde Shopify</strong>
@@ -170,13 +161,10 @@ export function App() {
         </div>
       )}
 
-      {/* La página demo original ahora también puede recibir el producto completo */}
       <ProductPageVestiDemo
-        productFromShopify={productFromShopify || undefined}
-        fullProductFromParent={fullProductFromParent || undefined}
+        productFromShopify={productFromShopify ?? undefined}
+        fullProductFromParent={fullProductFromParent ?? undefined}
       />
-    </>
+    </div>
   );
 }
-
-export default App;
