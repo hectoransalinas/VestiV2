@@ -46,7 +46,17 @@ function getProductFromQuery(): ProductFromShopify | null {
   const productTitle = params.get("productTitle");
   const shop = params.get("shop");
 
-  const imageUrl = params.get("imageUrl");
+  // 🔧 imageUrl viene url-encoded en la query → la decodificamos
+  const rawImageUrl = params.get("imageUrl");
+  let imageUrl: string | null = null;
+  if (rawImageUrl) {
+    try {
+      imageUrl = decodeURIComponent(rawImageUrl);
+    } catch {
+      imageUrl = rawImageUrl;
+    }
+  }
+
   const price = params.get("price");
   const currency = params.get("currency");
   const colorName = params.get("colorName");
