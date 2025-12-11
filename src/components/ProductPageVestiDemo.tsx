@@ -115,9 +115,14 @@ type ProductFromShopify = {
   colorName?: string | null;
 };
 
+// 👉 Tipo mínimo para lo que necesitamos de App.tsx
+type FullProductFromParent = {
+  descriptionHtml?: string;
+};
 
 type ProductPageVestiDemoProps = {
   productFromShopify?: ProductFromShopify;
+  fullProductFromParent?: FullProductFromParent;
 };
 
 type LastRecState = {
@@ -127,11 +132,15 @@ type LastRecState = {
   tag: string;
 } | null;
 
-export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({ productFromShopify }) => {
+export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
+  productFromShopify,
+  fullProductFromParent,
+}) => {
   const [selectedSizeId, setSelectedSizeId] = useState<string>(
     DEMO_GARMENTS[1].id // default M
   );
   const [lastRec, setLastRec] = useState<LastRecState>(null);
+
   const hasRealProduct =
     !!productFromShopify &&
     !!(
@@ -141,7 +150,12 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({ prod
       productFromShopify.shop
     );
 
-    const displayProduct = useMemo(() => {
+  const hasRealDescription =
+    !!fullProductFromParent &&
+    typeof fullProductFromParent.descriptionHtml === "string" &&
+    fullProductFromParent.descriptionHtml.trim().length > 0;
+
+  const displayProduct = useMemo(() => {
     const name =
       hasRealProduct && productFromShopify?.productTitle?.trim()
         ? productFromShopify.productTitle.trim()
@@ -182,13 +196,10 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({ prod
     };
   }, [hasRealProduct, productFromShopify]);
 
-
-
   const selectedGarment = useMemo(
     () => DEMO_GARMENTS.find((g) => g.id === selectedSizeId) ?? DEMO_GARMENTS[0],
     [selectedSizeId]
   );
-
 
   const buildMensaje = (tag: string): string => {
     if (tag === "OK") {
@@ -595,16 +606,30 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({ prod
             }}
           >
             <strong>Detalles del producto</strong>
-            <ul
-              style={{
-                margin: "4px 0 0",
-                paddingLeft: 16,
-              }}
-            >
-              <li>Relleno sintético liviano, ideal para media estación.</li>
-              <li>Capucha desmontable y cierres termosellados.</li>
-              <li>Fit regular unisex, pensado para uso urbano.</li>
-            </ul>
+            {hasRealDescription ? (
+              <div
+                style={{
+                  marginTop: 4,
+                  fontSize: 12,
+                  color: "#4b5563",
+                  lineHeight: 1.5,
+                }}
+                dangerouslySetInnerHTML={{
+                  __html: fullProductFromParent!.descriptionHtml!,
+                }}
+              />
+            ) : (
+              <ul
+                style={{
+                  margin: "4px 0 0",
+                  paddingLeft: 16,
+                }}
+              >
+                <li>Relleno sintético liviano, ideal para media estación.</li>
+                <li>Capucha desmontable y cierres termosellados.</li>
+                <li>Fit regular unisex, pensado para uso urbano.</li>
+              </ul>
+            )}
           </div>
         </div>
 
@@ -745,6 +770,5 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({ prod
     </div>
   );
 };
-
 
 export default ProductPageVestiDemo;

@@ -35,6 +35,8 @@ type FullProductFromParent = {
     stretchPct?: number;
     easePreset?: string;
   }[];
+  // 👉 NUEVO: descripción HTML proveniente del loader
+  descriptionHtml?: string;
 };
 
 // ---------------------------------------
