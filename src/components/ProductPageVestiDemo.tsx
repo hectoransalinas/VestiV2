@@ -1,17 +1,15 @@
-// IMPORTANTE: Integrar theme.ts
+// IMPORTANTE: Integrar theme.ts si lo estás usando
 // import { vestiTheme } from "../theme";
-// -------------------------------
+
 import React, { useMemo, useState } from "react";
 import { VestiProductEmbed } from "../embed/VestiProductEmbed";
 import type { GarmentCategory, Garment } from "../motor/fitEngine";
 
 /**
  * Demo de ficha de producto integrada con Vesti AI.
- *
- * Usa el motor real de calce, pero para no chocar con
- * configuraciones internas del fitEngine:
- * - category de la prenda queda en "remera" (categoría conocida)
- * - el texto visible habla de "Campera Puffer"
+ * - Usa el motor real de calce.
+ * - Si viene producto real de Shopify, lo muestra y usa su descripción.
+ * - Si no, cae al producto demo (Campera Puffer).
  */
 
 type DemoGarment = Garment & {
@@ -25,7 +23,6 @@ const DEMO_GARMENTS: DemoGarment[] = [
     id: "puffer-s",
     name: "Campera Puffer Vesti·Fit",
     brand: "Vesti",
-    // IMPORTANTE: usar una categoría conocida por el motor
     category: "remera",
     sizeLabel: "S",
     measures: {
@@ -33,8 +30,6 @@ const DEMO_GARMENTS: DemoGarment[] = [
       pecho: 94,
       cintura: 86,
       largoTorso: 60,
-      // Campos que el motor puede ignorar según categoría,
-      // pero los dejamos en 0 para no romper el tipo.
       largoPierna: 0,
       pieLargo: 0,
     },
@@ -115,9 +110,10 @@ type ProductFromShopify = {
   colorName?: string | null;
 };
 
-// 👉 Tipo mínimo para lo que necesitamos de App.tsx
+// Tipo mínimo que necesitamos de lo que viene desde App.tsx
 type FullProductFromParent = {
   descriptionHtml?: string;
+  category?: string; // viene del loader (upper/pants/shoes o lo que definas)
 };
 
 type ProductPageVestiDemoProps = {
@@ -154,6 +150,12 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
     !!fullProductFromParent &&
     typeof fullProductFromParent.descriptionHtml === "string" &&
     fullProductFromParent.descriptionHtml.trim().length > 0;
+
+  // 👉 Categoría efectiva que va al motor:
+  // primero la real que viene de Shopify, si no, la demo "superior".
+  const effectiveCategory: GarmentCategory = (
+    fullProductFromParent?.category ?? DEMO_CATEGORY
+  ) as GarmentCategory;
 
   const displayProduct = useMemo(() => {
     const name =
@@ -211,7 +213,6 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
     if (tag === "SIZE_DOWN") {
       return "Vemos algo de holgura en alguna zona. Si preferís un calce más al cuerpo o prolijo, compará con un talle menos.";
     }
-    // CHECK_LENGTH u otros tags: el talle se ve razonable de ancho, pero hay detalles a revisar.
     return "El talle se ve razonable para tus medidas. Mirá las zonas clave y el largo en tu avatar antes de decidir.";
   };
 
@@ -220,7 +221,6 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
 
     const { fit, recommendation, garment } = data;
 
-    // Talle actual evaluado (el que tiene el usuario seleccionado)
     const tallaActual =
       (garment && (garment as DemoGarment).sizeLabel) ||
       selectedGarment.sizeLabel ||
@@ -239,8 +239,6 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
         ? rawTag
         : "OK";
 
-    // A partir del tag, calculamos un "talle sugerido" relativo al talle actual
-    // usando la lista DEMO_GARMENTS (S, M, L, XL).
     let tallaSugerida = tallaActual;
 
     const currentId =
@@ -252,9 +250,9 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
         tagNormalizado === "SIZE_UP" &&
         currentIndex < DEMO_GARMENTS.length - 1
       ) {
-        tallaSugerida = (DEMO_GARMENTS[currentIndex + 1] as DemoGarment).sizeLabel;
+        tallaSugerida = DEMO_GARMENTS[currentIndex + 1].sizeLabel;
       } else if (tagNormalizado === "SIZE_DOWN" && currentIndex > 0) {
-        tallaSugerida = (DEMO_GARMENTS[currentIndex - 1] as DemoGarment).sizeLabel;
+        tallaSugerida = DEMO_GARMENTS[currentIndex - 1].sizeLabel;
       }
     }
 
@@ -284,11 +282,8 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
     switch (tag) {
       case "SIZE_UP":
       case "SIZE_DOWN":
-        // Tag de alerta: el motor detectó alguna zona al límite,
-        // pero dejamos que la decisión de talle la tome el usuario.
         return "Revisá el calce antes de comprar";
       default:
-        // Tag neutro: el talle se ve razonable para tus medidas.
         return "Este talle parece adecuado para vos";
     }
   };
@@ -332,6 +327,7 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
           "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
       }}
     >
+      {/* Migas de pan */}
       <div
         style={{
           fontSize: 12,
@@ -343,6 +339,7 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
         <span style={{ color: "#111827" }}>{displayProduct.name}</span>
       </div>
 
+      {/* Header: título + badge Vesti */}
       <div
         style={{
           display: "flex",
@@ -401,6 +398,7 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
         </div>
       </div>
 
+      {/* Layout principal: imagen + info izquierda / Vesti derecha */}
       <div
         style={{
           display: "flex",
@@ -408,6 +406,7 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
           flexWrap: "wrap",
         }}
       >
+        {/* Columna izquierda: imagen, precio, talles, detalles */}
         <div
           style={{
             flex: 1,
@@ -418,6 +417,7 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
             gap: 16,
           }}
         >
+          {/* Imagen */}
           <div
             style={{
               borderRadius: 20,
@@ -438,6 +438,7 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
             />
           </div>
 
+          {/* Precio + color */}
           <div
             style={{
               display: "flex",
@@ -494,6 +495,7 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
             </div>
           </div>
 
+          {/* Selector de talle demo */}
           <div>
             <div
               style={{
@@ -544,12 +546,12 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
                 color: "#6b7280",
               }}
             >
-              Tip: creá tu avatar con{" "}
-              <strong>Vesti AI</strong> y validá si este talle es
-              el ideal para vos.
+              Tip: creá tu avatar con <strong>Vesti AI</strong> y
+              validá si este talle es el ideal para vos.
             </div>
           </div>
 
+          {/* Botones compra */}
           <div
             style={{
               display: "flex",
@@ -594,6 +596,7 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
             </button>
           </div>
 
+          {/* Detalles del producto: descripción real Shopify o demo */}
           <div
             style={{
               marginTop: 8,
@@ -633,6 +636,7 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
           </div>
         </div>
 
+        {/* Columna derecha: Vesti AI */}
         <div
           style={{
             flex: 1,
@@ -668,7 +672,7 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
 
           <VestiProductEmbed
             garment={selectedGarment}
-            category={DEMO_CATEGORY}
+            category={effectiveCategory}
             onRecomendacion={handleRecomendacion}
           />
 
