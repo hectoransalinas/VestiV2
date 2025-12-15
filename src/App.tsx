@@ -17,7 +17,7 @@ type FullProductFromParent = {
   title: string;
   category: string;
   imageUrl?: string;
-  price?: number;
+  price?: number; // 👈 viene desde Shopify en centavos
   currency?: string;
   colorName?: string;
   variants: {
@@ -35,8 +35,6 @@ type FullProductFromParent = {
     stretchPct?: number;
     easePreset?: string;
   }[];
-  // 👉 NUEVO: descripción HTML proveniente del loader
-  descriptionHtml?: string;
 };
 
 // ---------------------------------------
@@ -98,7 +96,7 @@ export default function App() {
   }, []);
 
   // 2) Handshake con el parent (vesti-loader.js) para recibir VESTI_PRODUCT
-  //    y usar ESA imageUrl como fuente de verdad.
+  //    y usar ESA imageUrl + price/currency/colorName como fuente de verdad.
   useEffect(() => {
     const listener = (event: MessageEvent) => {
       if (!event.data) return;
@@ -122,7 +120,7 @@ export default function App() {
         );
         setFullProductFromParent(fullProduct);
 
-        // 👇 SIEMPRE usamos la imageUrl del loader.
+        // 👇 Ahora sincronizamos también precio / moneda / color
         setProductFromShopify((prev) => {
           const base: ProductFromShopify =
             prev ?? {
@@ -136,10 +134,18 @@ export default function App() {
               colorName: null,
             };
 
+          // fullProduct.price viene en centavos desde Shopify (product.js)
+          const priceFromFull =
+            typeof fullProduct.price === "number"
+              ? String(Math.round(fullProduct.price / 100))
+              : null;
+
           return {
             ...base,
             imageUrl: fullProduct.imageUrl || base.imageUrl,
-            // No tocamos price / currency / colorName para mantener el $100 y demás.
+            price: priceFromFull ?? base.price,
+            currency: fullProduct.currency || base.currency,
+            colorName: fullProduct.colorName || base.colorName,
           };
         });
       }
