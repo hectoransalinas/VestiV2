@@ -22,19 +22,15 @@ export type GarmentCategory = "remera" | "buzo" | "pantalon";
 export type EasePreset = "slim" | "regular" | "oversize";
 
 export interface Garment {
-  id: string;
-  name: string;
-  brand?: string;
+  id?: string | number;
+  sizeLabel?: string;
   category: GarmentCategory;
-  sizeLabel: string;
-  measures: Partial<Measurements>;
-  stretchPct: number; // 0-100
+  brand?: string;
+  measures: Measurements;
   easePreset?: EasePreset;
+  stretchPct: number;
 }
 
-// ------------------------------
-// Estructuras de resultado
-// ------------------------------
 export interface ZoneFitWidth {
   kind: "width";
   zone: ZoneWidth;
@@ -88,32 +84,19 @@ export interface FitResult {
   };
 }
 
-// ------------------------------
-// Recomendación de talle
-// ------------------------------
-export type RecTag = "OK" | "SIZE_UP" | "SIZE_DOWN" | "CHECK_LENGTH";
+export type RecommendationTag = "OK" | "SIZE_UP" | "SIZE_DOWN" | "CHECK_LENGTH";
 
 export interface Recommendation {
-  tag: RecTag;
+  tag: RecommendationTag;
   title: string;
   message: string;
 }
 
 // ------------------------------
-// Configuración (Equilibrada)
+// Parámetros base (ease, tolerancias, pesos)
 // ------------------------------
-const COL_OK = "#22c55e"; // verde
-const COL_TIGHT = "#ef4444"; // rojo
-const COL_LOOSE = "#eab308"; // amarillo
 
-// tolerancias base por categoría (en cm)
-const BASE_TOLERANCES: Record<GarmentCategory, Partial<Measurements>> = {
-  remera: { hombros: 0.8, pecho: 2.0, cintura: 2.0, largoTorso: 1.0 },
-  buzo: { hombros: 1.0, pecho: 2.5, cintura: 2.5, largoTorso: 1.0 },
-  pantalon: { cintura: 2.0, largoPierna: 1.0 },
-};
-
-// “ease” (holgura objetivo) según categoría y preset
+// Tabla de ease por categoría/preset
 const EASE_TABLE: Record<
   GarmentCategory,
   Record<EasePreset, Measurements>
@@ -128,8 +111,8 @@ const EASE_TABLE: Record<
     },
     regular: {
       hombros: 1,
-      pecho: 1,
-      cintura: 2,
+      pecho: 4,
+      cintura: 4,
       largoTorso: 1,
       largoPierna: 0,
     },
@@ -170,7 +153,7 @@ const EASE_TABLE: Record<
       pecho: 0,
       cintura: 1,
       largoTorso: 0,
-      largoPierna: 0.5,
+      largoPierna: 1,
     },
     regular: {
       hombros: 0,
@@ -182,10 +165,35 @@ const EASE_TABLE: Record<
     oversize: {
       hombros: 0,
       pecho: 0,
-      cintura: 3,
+      cintura: 4,
       largoTorso: 0,
-      largoPierna: 1.5,
+      largoPierna: 1,
     },
+  },
+};
+
+// Tolerancias base por categoría
+const BASE_TOLERANCES: Record<GarmentCategory, Measurements> = {
+  remera: {
+    hombros: 1.5,
+    pecho: 4,
+    cintura: 4,
+    largoTorso: 2,
+    largoPierna: 0,
+  },
+  buzo: {
+    hombros: 1.5,
+    pecho: 4.5,
+    cintura: 4.5,
+    largoTorso: 2,
+    largoPierna: 0,
+  },
+  pantalon: {
+    hombros: 0,
+    pecho: 0,
+    cintura: 3,
+    largoTorso: 0,
+    largoPierna: 1.5,
   },
 };
 
@@ -218,6 +226,11 @@ const BRAND_WIDTH_OFFSETS: Record<string, Partial<Measurements>> = {
 // helper: clamp
 const clamp = (n: number, lo: number, hi: number) =>
   Math.max(lo, Math.min(hi, n));
+
+// Colores (solo referencia visual para overlays)
+const COL_OK = "#16a34a";
+const COL_TIGHT = "#ef4444";
+const COL_LOOSE = "#eab308";
 
 // ------------------------------
 // Motor principal: computeFit
@@ -317,7 +330,7 @@ export function computeFit(
       body,
       garment,
       baseEase,
-      tol: effectiveTol,
+      tol: tolZ,
       weight: wght,
       scoreUnit: unit,
       contribution,
@@ -401,7 +414,7 @@ export function computeFit(
     });
   });
 
-  // Score global
+  // Agregación a score global
   let score = 0;
   let wsum = 0;
 
@@ -419,6 +432,15 @@ export function computeFit(
   let overall: FitWidth = "Perfecto";
   if (norm <= -0.15) overall = "Ajustado";
   else if (norm >= 0.15) overall = "Holgado";
+
+  // 🎯 Regla específica para pantalones:
+  // el calce global se define por la cintura (no por el promedio de todo).
+  if (g.category === "pantalon") {
+    const cinturaZone = widthsFit.find((w) => w.zone === "cintura");
+    if (cinturaZone) {
+      overall = cinturaZone.status;
+    }
+  }
 
   return {
     overall,
@@ -445,7 +467,73 @@ export function makeRecommendation(params: {
   const { category, garment, fit } = params;
   const widths = fit.widths || [];
   const lengths = fit.lengths || [];
-  const norm = fit.debug && typeof fit.debug.norm === "number" ? fit.debug.norm : 0;
+  const norm =
+    fit.debug && typeof fit.debug.norm === "number"
+      ? fit.debug.norm
+      : 0;
+
+  // 🧵 Regla específica para pantalones: priorizamos cintura y largo de pierna.
+  if (category === "pantalon") {
+    const cinturaFit = widths.find((w) => w.zone === "cintura");
+    const largoFit = lengths.find((l) => l.zone === "largoPierna");
+
+    const cinturaStatus = cinturaFit?.status;
+    const largoStatus = largoFit?.status;
+
+    // Si no tenemos datos, dejamos que aplique la lógica genérica.
+    if (cinturaStatus) {
+      // 🔺 Cintura ajustada -> sugerimos subir talle
+      if (cinturaStatus === "Ajustado") {
+        const largoMsg =
+          largoStatus && largoStatus !== "Perfecto"
+            ? ` Además, el largo de pierna se percibe ${largoStatus.toLowerCase()}.`
+            : "";
+        return {
+          tag: "SIZE_UP",
+          title: "Mejor un talle más",
+          message:
+            `La cintura de este pantalón se ve ajustada para tus medidas.${largoMsg} ` +
+            "Te recomendamos probar un talle más para evitar incomodidad en la cintura.",
+        };
+      }
+
+      // 🔻 Cintura holgada -> sugerimos bajar talle
+      if (cinturaStatus === "Holgado") {
+        const largoMsg =
+          largoStatus && largoStatus !== "Perfecto"
+            ? ` Además, el largo de pierna se percibe ${largoStatus.toLowerCase()}.`
+            : "";
+        return {
+          tag: "SIZE_DOWN",
+          title: "Podrías bajar un talle",
+          message:
+            `La cintura de este pantalón se ve algo holgada para tus medidas.${largoMsg} ` +
+            "Podrías comparar con un talle menos para un calce más prolijo.",
+        };
+      }
+
+      // ✅ Cintura ok, pero revisamos el largo
+      if (cinturaStatus === "Perfecto") {
+        if (largoStatus && largoStatus !== "Perfecto") {
+          return {
+            tag: "CHECK_LENGTH",
+            title: "Revisá el largo de pierna",
+            message:
+              `La cintura calza bien en este talle, pero el largo de pierna se percibe ${largoStatus.toLowerCase()}. ` +
+              "Revisá si preferís que el pantalón quede más corto o más largo antes de confirmar la compra.",
+          };
+        }
+
+        // Todo razonable: cintura y largo bien
+        return {
+          tag: "OK",
+          title: "Talle recomendado",
+          message:
+            `Este talle ${garment.sizeLabel ?? ""} tiene un equilibrio razonable entre cintura y largo de pierna para tus medidas.`,
+        };
+      }
+    }
+  }
 
   // Mapeo por nombre de zona para poder aplicar reglas específicas
   const zonesByName: Record<string, string> = {};
@@ -489,7 +577,9 @@ export function makeRecommendation(params: {
     return {
       tag: "OK",
       title: "Talle recomendado",
-      message: `El talle ${garment.sizeLabel ?? ""} tiene un calce equilibrado para tus medidas en esta prenda.`,
+      message: `El talle ${
+        garment.sizeLabel ?? ""
+      } tiene un calce equilibrado para tus medidas en esta prenda.`,
     };
   }
 
@@ -529,7 +619,9 @@ export function makeRecommendation(params: {
         tag: "OK",
         title: "Talle recomendado (con opción más slim)",
         message:
-          `Este talle ${garment.sizeLabel ?? ""} acompaña bien tus medidas en general y puede sentirse algo ajustado en el pecho. ` +
+          `Este talle ${
+            garment.sizeLabel ?? ""
+          } acompaña bien tus medidas en general y puede sentirse algo ajustado en el pecho. ` +
           "Si preferís un calce más al cuerpo o muy prolijo, podés comparar con un talle menos.",
       };
     }
@@ -547,7 +639,7 @@ export function makeRecommendation(params: {
       title: "Mejor un talle más",
       message:
         zonasApret.length > 0
-          ? `Este talle tiende a quedar ajustado en ${zonasApret}. Te conviene considerar un talle más para evitar incomodidad y posibles devoluciones.`
+          ? `Este talle tiende a quedar ajustado en ${zonasApret}. Es más seguro probar un talle más para evitar incomodidad y posibles devoluciones.`
           : "Este talle se percibe algo ajustado en varias zonas. Te conviene considerar un talle más.",
     };
   }
@@ -577,7 +669,7 @@ export function makeRecommendation(params: {
     return {
       tag: "CHECK_LENGTH",
       title: "Revisá el largo",
-      message: `El largo de la prenda puede ser un punto a revisar (${zonas}). Según tu altura y proporciones, podrías preferir más o menos cobertura. Evaluá si este largo coincide con tu preferencia o considerá otro talle/modelo.`,
+      message: `El largo de la prenda puede ser un punto a revisar (${zonas}). Según tu altura y preferencias, revisá si el largo coincide con tu preferencia o considerá otro talle/modelo.`,
     };
   }
 
@@ -589,4 +681,3 @@ export function makeRecommendation(params: {
       "El calce es razonable para tus medidas. Revisá el detalle por zonas para confirmar que coincida con tu preferencia de ajuste.",
   };
 }
-
