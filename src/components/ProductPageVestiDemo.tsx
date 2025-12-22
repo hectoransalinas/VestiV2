@@ -128,6 +128,74 @@ type LastRecState = {
   tag: string;
 } | null;
 
+/** Normaliza categorías para que la UI y el motor hablen el mismo idioma */
+function normalizeCategoryUI(raw: any): GarmentCategory {
+  const c = String(raw ?? "").trim().toLowerCase();
+
+  if (
+    ["pants", "pantalon", "pantalón", "jeans", "denim", "trousers", "pant"].includes(
+      c
+    )
+  ) {
+    return "pants" as any;
+  }
+  if (
+    ["shoes", "shoe", "zapatilla", "zapatillas", "calzado", "sneakers", "botas", "boots"].includes(
+      c
+    )
+  ) {
+    return "shoes" as any;
+  }
+  if (
+    [
+      "upper",
+      "top",
+      "superior",
+      "remera",
+      "camiseta",
+      "shirt",
+      "tshirt",
+      "buzo",
+      "hoodie",
+      "campera",
+      "jacket",
+    ].includes(c)
+  ) {
+    return "upper" as any;
+  }
+
+  // fallback seguro
+  return DEMO_CATEGORY;
+}
+
+/** Normaliza nombres de zonas para filtrar en el resumen UI */
+function normalizeZoneKey(z: any): string {
+  const s = String(z ?? "").trim().toLowerCase();
+
+  if (s.includes("homb")) return "hombros";
+  if (s.includes("pech")) return "pecho";
+  if (s.includes("cint")) return "cintura";
+  if (s.includes("torso")) return "largoTorso";
+  if (s.includes("pier")) return "largoPierna";
+  if (s.includes("pie")) return "pieLargo";
+
+  // ya viene en camelCase (ej: largoPierna)
+  if (s === "largopierna") return "largoPierna";
+  if (s === "largotorso") return "largoTorso";
+  if (s === "pielargo") return "pieLargo";
+
+  return s;
+}
+
+function allowedZonesForCategory(cat: GarmentCategory): Set<string> {
+  const c = String(cat ?? "").toLowerCase();
+
+  if (c === "pants") return new Set(["cintura", "largoPierna"]);
+  if (c === "shoes") return new Set(["pieLargo"]);
+  // upper/default
+  return new Set(["hombros", "pecho", "cintura", "largoTorso"]);
+}
+
 export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
   productFromShopify,
   fullProductFromParent,
@@ -151,11 +219,15 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
     typeof fullProductFromParent.descriptionHtml === "string" &&
     fullProductFromParent.descriptionHtml.trim().length > 0;
 
-  // 👉 Categoría efectiva que va al motor:
-  // primero la real que viene de Shopify, si no, la demo "superior".
-  const effectiveCategory: GarmentCategory = (
-    fullProductFromParent?.category ?? DEMO_CATEGORY
-  ) as GarmentCategory;
+  // 👉 Categoría efectiva que va al motor (normalizada)
+  const effectiveCategory: GarmentCategory = useMemo(() => {
+    return normalizeCategoryUI(fullProductFromParent?.category ?? DEMO_CATEGORY);
+  }, [fullProductFromParent?.category]);
+
+  const zonesAllowed = useMemo(
+    () => allowedZonesForCategory(effectiveCategory),
+    [effectiveCategory]
+  );
 
   const displayProduct = useMemo(() => {
     const name =
@@ -213,6 +285,9 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
     if (tag === "SIZE_DOWN") {
       return "Vemos algo de holgura en alguna zona. Si preferís un calce más al cuerpo o prolijo, compará con un talle menos.";
     }
+    if (tag === "CHECK_LENGTH") {
+      return "El talle parece razonable, pero revisá el largo antes de comprar (puede variar según cómo te guste usar el pantalón).";
+    }
     return "El talle se ve razonable para tus medidas. Mirá las zonas clave y el largo en tu avatar antes de decidir.";
   };
 
@@ -226,16 +301,30 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
       selectedGarment.sizeLabel ||
       "—";
 
-    const widths: string[] =
+    const widthsRaw: string[] =
       fit?.widths?.map((w: any) => `${w.zone}: ${w.status}`) ?? [];
-    const lengths: string[] =
+    const lengthsRaw: string[] =
       fit?.lengths?.map((l: any) => `${l.zone}: ${l.status}`) ?? [];
+
+    // Filtrar zonas según categoría (evita "hombros/pecho" cuando es pantalón)
+    const filterPairs = (pairs: string[]) =>
+      pairs.filter((p) => {
+        const [zone] = p.split(":");
+        const key = normalizeZoneKey(zone);
+        return zonesAllowed.has(key);
+      });
+
+    const widths = filterPairs(widthsRaw);
+    const lengths = filterPairs(lengthsRaw);
 
     const resumenZonas = [...widths, ...lengths].join(" · ");
 
-    const rawTag = recommendation?.tag ?? "OK";
+    const rawTag = String(recommendation?.tag ?? "OK").toUpperCase();
     const tagNormalizado =
-      rawTag === "SIZE_UP" || rawTag === "SIZE_DOWN" || rawTag === "OK"
+      rawTag === "SIZE_UP" ||
+      rawTag === "SIZE_DOWN" ||
+      rawTag === "OK" ||
+      rawTag === "CHECK_LENGTH"
         ? rawTag
         : "OK";
 
@@ -282,6 +371,7 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
     switch (tag) {
       case "SIZE_UP":
       case "SIZE_DOWN":
+      case "CHECK_LENGTH":
         return "Revisá el calce antes de comprar";
       default:
         return "Este talle parece adecuado para vos";
@@ -297,6 +387,8 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
         return "#fef2f2";
       case "SIZE_DOWN":
         return "#fffbeb";
+      case "CHECK_LENGTH":
+        return "#eff6ff";
       default:
         return "#eff6ff";
     }
@@ -311,10 +403,19 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
         return "1px solid #fecACA";
       case "SIZE_DOWN":
         return "1px solid #fef3c7";
+      case "CHECK_LENGTH":
+        return "1px solid #bfdbfe";
       default:
         return "1px solid #bfdbfe";
     }
   })();
+
+  const vestiIntroZonesText = useMemo(() => {
+    const c = String(effectiveCategory).toLowerCase();
+    if (c === "pants") return "cintura y largo de pierna";
+    if (c === "shoes") return "largo de pie";
+    return "hombros, pecho, cintura y largo";
+  }, [effectiveCategory]);
 
   return (
     <div
@@ -546,8 +647,8 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
                 color: "#6b7280",
               }}
             >
-              Tip: creá tu avatar con <strong>Vesti AI</strong> y
-              validá si este talle es el ideal para vos.
+              Tip: creá tu avatar con <strong>Vesti AI</strong> y validá si este
+              talle es el ideal para vos.
             </div>
           </div>
 
@@ -663,9 +764,8 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
                 color: "#6b7280",
               }}
             >
-              Creá tu avatar con una selfie, ajustá tus medidas y
-              mirá cómo se comporta el calce en{" "}
-              <strong>hombros, pecho, cintura y largo</strong> antes
+              Creá tu avatar con una selfie, ajustá tus medidas y mirá cómo se
+              comporta el calce en <strong>{vestiIntroZonesText}</strong> antes
               de comprar.
             </div>
           </div>
@@ -751,10 +851,9 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
                   color: "#6b7280",
                 }}
               >
-                Una vez que termines tu avatar, acá vas a ver un
-                resumen de cómo te queda esta campera por zonas
-                (hombros, pecho, cintura y largo) y el talle que te
-                recomendamos para reducir devoluciones.
+                Una vez que termines tu avatar, acá vas a ver un resumen del
+                calce por zonas y el talle que te recomendamos para reducir
+                devoluciones.
               </div>
             )}
           </div>
@@ -766,8 +865,8 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
               marginTop: 2,
             }}
           >
-            Vesti AI es una herramienta de recomendación. El calce
-            final puede variar según preferencias personales y marca.
+            Vesti AI es una herramienta de recomendación. El calce final puede
+            variar según preferencias personales y marca.
           </div>
         </div>
       </div>
