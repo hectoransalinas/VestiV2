@@ -125,11 +125,7 @@ function shoeFitFromFootLength(lenCm: number): {
   };
 }
 
-const FitOverlay: React.FC<OverlayProps> = ({
-  fit,
-  viewMode,
-  footLength,
-}) => {
+const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
   if (!fit && viewMode !== "shoes") return null;
 
   const isTopView = viewMode === "top";
@@ -142,11 +138,7 @@ const FitOverlay: React.FC<OverlayProps> = ({
       return z.zone === "cintura" || z.zone === "cadera";
     }
     // Vista superior
-    return (
-      z.zone === "hombros" ||
-      z.zone === "pecho" ||
-      z.zone === "cintura"
-    );
+    return z.zone === "hombros" || z.zone === "pecho" || z.zone === "cintura";
   });
 
   const rawLengths = fit?.lengths ?? [];
@@ -167,7 +159,7 @@ const FitOverlay: React.FC<OverlayProps> = ({
     if (torso) {
       lengthZones = [torso];
     }
-  };
+  }
 
   const hasShoeOverlay = isShoesView;
 
@@ -238,8 +230,6 @@ const FitOverlay: React.FC<OverlayProps> = ({
         const color = zoneColor(lz.status);
         const shortLabel = lz.zone === "largoTorso" ? "Torso" : "Pierna";
 
-        // Para torso colocamos el texto ARRIBA de la barra
-        // y para pierna lo ubicamos más abajo, cerca de la rodilla.
         let chipTop: string;
         if (lz.zone === "largoTorso") {
           chipTop = "24%";
@@ -354,33 +344,23 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
   perfilInicial,
   onRecomendacion,
 }) => {
-  const [user, setUser] = useState<Measurements>(
-    perfilInicial ?? defaultPerfil
-  );
+  const [user, setUser] = useState<Measurements>(perfilInicial ?? defaultPerfil);
   const [avatarUrl, setAvatarUrl] = useState<string>("");
-  const [showCreatorHelp, setShowCreatorHelp] =
-    useState<boolean>(true);
+  const [showCreatorHelp, setShowCreatorHelp] = useState<boolean>(true);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     if ((categoria as any) === "pantalon") return "bottom";
-    if (
-      (categoria as any) === "calzado" ||
-      (categoria as any) === "zapatilla"
-    )
+    if ((categoria as any) === "calzado" || (categoria as any) === "zapatilla")
       return "shoes";
     return "top";
   });
 
   const lastPayloadRef = useRef<string | null>(null);
 
-
   const [footLength, setFootLength] = useState<number>(26);
 
-  const fit = useMemo(
-    () => computeFit(user, prenda),
-    [user, prenda]
-  );
+  const fit = useMemo(() => computeFit(user, prenda), [user, prenda]);
 
   const rec = useMemo(
     () =>
@@ -444,12 +424,10 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
     return () => {
       iframe.removeEventListener("load", handleLoad);
     };
-
   }, [iframeRef]);
 
   // Auto-ajuste de alto cuando se usa dentro de un iframe embebido
   useEffect(() => {
-    // Si no estamos dentro de un iframe, no hace falta hacer nada
     if (window.self === window.top) return;
 
     const sendHeight = () => {
@@ -486,7 +464,6 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
         window.removeEventListener("load", sendHeight);
       };
     } else {
-      // Fallback simple si el navegador no soporta ResizeObserver
       window.addEventListener("resize", sendHeight);
       window.addEventListener("load", sendHeight);
       return () => {
@@ -497,8 +474,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
   }, []);
 
   // Notificar hacia afuera (tienda) cuando cambia algo relevante
-  
-useEffect(() => {
+  useEffect(() => {
     if (!onRecomendacion) return;
 
     const payload = {
@@ -515,21 +491,66 @@ useEffect(() => {
     lastPayloadRef.current = serialized;
     onRecomendacion(payload);
   }, [fit, rec, user, prenda, avatarUrl, onRecomendacion]);
-const handleChange =
+
+  const handleChange =
     (field: keyof Measurements) =>
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const val = Number(e.target.value.replace(",", "."));
       setUser((prev) => ({ ...prev, [field]: isNaN(val) ? 0 : val }));
     };
 
-  const handleFootChange = (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
+  const handleFootChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = Number(e.target.value.replace(",", "."));
     setFootLength(isNaN(val) ? 0 : val);
   };
 
   const creandoAvatar = !avatarUrl;
+
+  // -------------------- NUEVA PALETA GLOBAL PARA REC.TAG --------------------
+  // OK           -> VERDE
+  // CHECK_LENGTH -> AMARILLO (alerta)
+  // SIZE_UP/DOWN -> ROJO (revisar talle)
+  // default      -> AZUL (info)
+  const isOk = rec.tag === "OK";
+  const isSizeUp = rec.tag === "SIZE_UP";
+  const isSizeDown = rec.tag === "SIZE_DOWN";
+  const isCheckLength = rec.tag === "CHECK_LENGTH";
+
+  const recBg = isOk
+    ? "#ecfdf3"
+    : isSizeUp || isSizeDown
+    ? "#fef2f2"
+    : isCheckLength
+    ? "#fffbeb"
+    : "#eff6ff";
+
+  const recBorder = isOk
+    ? "1px solid #bbf7d0"
+    : isSizeUp || isSizeDown
+    ? "1px solid #fecACA"
+    : isCheckLength
+    ? "1px solid #fef3c7"
+    : "1px solid #bfdbfe";
+
+  const recTitle = isOk
+    ? `Calce recomendado · Talle ${prenda.sizeLabel}`
+    : isSizeUp
+    ? `Revisá el calce · Talle actual ${prenda.sizeLabel}`
+    : isSizeDown
+    ? `Revisá el calce · Talle actual ${prenda.sizeLabel}`
+    : isCheckLength
+    ? `Ojo con el largo · Talle ${prenda.sizeLabel}`
+    : `Calce estimado · Talle ${prenda.sizeLabel}`;
+
+  const recBody = isOk
+    ? "Este talle se ve bien en general para tus medidas. Revisá las zonas clave para confirmar el calce que preferís."
+    : isSizeUp
+    ? "Vemos alguna zona al límite o ajustada. Para estar tranquilo, compará este talle con uno más antes de comprar."
+    : isSizeDown
+    ? "Vemos holgura en alguna zona. Si preferís un calce más al cuerpo, compará este talle con uno menos antes de decidir."
+    : isCheckLength
+    ? "El talle se ve bien, pero el largo podría no ser ideal. Revisá la alerta de largo antes de decidir tu compra."
+    : "Revisá las zonas clave del calce antes de decidir tu talle final.";
 
   return (
     <div
@@ -544,8 +565,7 @@ const handleChange =
         display: "flex",
         flexDirection: "column",
         gap: 12,
-        fontFamily:
-          "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+        fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
       }}
     >
       {/* Paso a paso arriba */}
@@ -632,11 +652,7 @@ const handleChange =
           <>
             <AvatarViewer avatarUrl={avatarUrl} />
             {/* Overlays de calce sobre el avatar */}
-            <FitOverlay
-              fit={fit}
-              viewMode={viewMode}
-              footLength={footLength}
-            />
+            <FitOverlay fit={fit} viewMode={viewMode} footLength={footLength} />
           </>
         ) : (
           <>
@@ -664,70 +680,65 @@ const handleChange =
                   zIndex: 10,
                 }}
               >
+                <div
+                  style={{
+                    background: "#f9fafb",
+                    borderRadius: 16,
+                    padding: "12px 14px",
+                    maxWidth: "90%",
+                    fontSize: 12,
+                    color: "#0f172a",
+                    boxShadow: "0 10px 25px rgba(15,23,42,0.35)",
+                  }}
+                >
                   <div
                     style={{
-                      background: "#f9fafb",
-                      borderRadius: 16,
-                      padding: "12px 14px",
-                      maxWidth: "90%",
-                      fontSize: 12,
-                      color: "#0f172a",
-                      boxShadow:
-                        "0 10px 25px rgba(15,23,42,0.35)",
+                      fontWeight: 600,
+                      marginBottom: 6,
+                      fontSize: 13,
                     }}
                   >
-                    <div
-                      style={{
-                        fontWeight: 600,
-                        marginBottom: 6,
-                        fontSize: 13,
-                      }}
-                    >
-                      Cómo crear tu avatar en 3 pasos
-                    </div>
-                    <ol
-                      style={{
-                        margin: 0,
-                        paddingLeft: 18,
-                        marginBottom: 8,
-                      }}
-                    >
-                      <li>
-                        Tocá el{" "}
-                        <strong>
-                          icono de la persona con pincel
-                        </strong>{" "}
-                        en la barra inferior.
-                      </li>
-                      <li>
-                        Luego tocá el <strong>icono de cámara</strong>.
-                      </li>
-                      <li>
-                        Elegí si querés tomarte una foto o subir una
-                        selfie. Cuando termine, tu avatar se va a
-                        mostrar automáticamente acá.
-                      </li>
-                    </ol>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowCreatorHelp(false);
-                      }}
-                      style={{
-                        marginTop: 4,
-                        borderRadius: 999,
-                        border: "none",
-                        padding: "6px 10px",
-                        fontSize: 12,
-                        background: "#4f46e5",
-                        color: "#f9fafb",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Entendido, quiero crear mi avatar
-                    </button>
+                    Cómo crear tu avatar en 3 pasos
                   </div>
+                  <ol
+                    style={{
+                      margin: 0,
+                      paddingLeft: 18,
+                      marginBottom: 8,
+                    }}
+                  >
+                    <li>
+                      Tocá el <strong>icono de la persona con pincel</strong> en
+                      la barra inferior.
+                    </li>
+                    <li>
+                      Luego tocá el <strong>icono de cámara</strong>.
+                    </li>
+                    <li>
+                      Elegí si querés tomarte una foto o subir una selfie. Cuando
+                      termine, tu avatar se va a mostrar automáticamente acá.
+                    </li>
+                  </ol>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowCreatorHelp(false);
+                    }}
+                    style={{
+                      marginTop: 4,
+                      borderRadius: 999,
+                      border: "none",
+                      padding: "6px 10px",
+                      fontSize: 12,
+                      background: "#4f46e5",
+                      color: "#f9fafb",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Entendido, quiero crear mi avatar
+                  </button>
+                </div>
               </div>
             )}
           </>
@@ -757,8 +768,7 @@ const handleChange =
       <div
         style={{
           display: "grid",
-          gridTemplateColumns:
-            viewMode === "shoes" ? "1fr" : "1fr 1fr",
+          gridTemplateColumns: viewMode === "shoes" ? "1fr" : "1fr 1fr",
           gap: 8,
           fontSize: 12,
         }}
@@ -865,22 +875,8 @@ const handleChange =
             marginTop: 4,
             padding: 12,
             borderRadius: 12,
-            background:
-              rec.tag === "OK"
-                ? "#ecfdf3"
-                : rec.tag === "SIZE_UP"
-                ? "#fef2f2"
-                : rec.tag === "SIZE_DOWN"
-                ? "#fffbeb"
-                : "#eff6ff",
-            border:
-              rec.tag === "OK"
-                ? "1px solid #bbf7d0"
-                : rec.tag === "SIZE_UP"
-                ? "1px solid #fecACA"
-                : rec.tag === "SIZE_DOWN"
-                ? "1px solid #fef3c7"
-                : "1px solid #bfdbfe",
+            background: recBg,
+            border: recBorder,
           }}
         >
           <div
@@ -890,23 +886,9 @@ const handleChange =
               marginBottom: 4,
             }}
           >
-            {rec.tag === "OK"
-              ? "Calce recomendado · Talle " + prenda.sizeLabel
-              : rec.tag === "SIZE_UP"
-              ? "Revisá el calce · Talle actual " + prenda.sizeLabel
-              : rec.tag === "SIZE_DOWN"
-              ? "Calce holgado · Talle actual " + prenda.sizeLabel
-              : "Calce estimado · Talle " + prenda.sizeLabel}
+            {recTitle}
           </div>
-          <div style={{ fontSize: 12, color: "#4b5563" }}>
-            {rec.tag === "OK"
-              ? "Este talle se ve bien en general para tus medidas. Revisá las zonas clave para confirmar el calce que preferís."
-              : rec.tag === "SIZE_UP"
-              ? "Vemos alguna zona al límite o ajustada. Podés comparar este talle con uno más para quedarte tranquilo antes de comprar."
-              : rec.tag === "SIZE_DOWN"
-              ? "Vemos algo de holgura en alguna zona. Si preferís un calce más al cuerpo, podés comparar este talle con uno menos."
-              : "Revisá las zonas clave del calce antes de decidir tu talle final."}
-          </div>
+          <div style={{ fontSize: 12, color: "#4b5563" }}>{recBody}</div>
         </div>
       )}
 
@@ -930,9 +912,7 @@ const handleChange =
             widthBadges = allWidths.filter((z) =>
               ["hombros", "pecho", "cintura"].includes(z.zone)
             );
-            lengthBadges = allLengths.filter(
-              (lz) => lz.zone === "largoTorso"
-            );
+            lengthBadges = allLengths.filter((lz) => lz.zone === "largoTorso");
           } else if (viewMode === "bottom") {
             widthBadges = allWidths.filter((z) =>
               ["cintura", "cadera"].includes(z.zone)
@@ -942,9 +922,7 @@ const handleChange =
               lengthBadges = [leg];
             } else if (allLengths.length) {
               const base = allLengths[0];
-              lengthBadges = [
-                { ...base, zone: "largoPierna" } as typeof base,
-              ];
+              lengthBadges = [{ ...base, zone: "largoPierna" } as typeof base];
             } else {
               lengthBadges = [];
             }
