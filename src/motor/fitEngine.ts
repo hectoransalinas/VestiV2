@@ -96,7 +96,13 @@ function clamp(n: number, min: number, max: number) {
 }
 
 function safeNum(n: any, fallback = 0) {
-  return typeof n === "number" && Number.isFinite(n) ? n : fallback;
+  // Acepta number o string numérico (viene mucho desde JSON/metafields)
+  if (typeof n === "number" && Number.isFinite(n)) return n;
+  if (typeof n === "string") {
+    const t = n.trim().replace(",", ".");
+    if (t !== "" && !Number.isNaN(Number(t)) && Number.isFinite(Number(t))) return Number(t);
+  }
+  return fallback;
 }
 
 /**
@@ -208,9 +214,18 @@ export function computeFit(user: Measurements, garment: Garment): FitResult {
       deltaWaist < 0 ? "Ajustado" : deltaWaist <= 3 ? "Perfecto" : "Holgado";
 
     // Largo pierna: Perfecto ±2
-    const deltaLen = g.largoPierna - u.largoPierna;
-    const largoStatus: FitLength =
-      deltaLen < -2 ? "Corto" : deltaLen <= 2 ? "Perfecto" : "Largo";
+    // Si falta dato (0), no forzamos alerta (evita bug de quedar siempre "Largo")
+    let deltaLen = g.largoPierna - u.largoPierna;
+    let largoStatus: FitLength = "Perfecto";
+
+    if (g.largoPierna > 0 && u.largoPierna > 0) {
+      // delta = prenda - cuerpo (positivo => a la prenda le sobra largo)
+      deltaLen = g.largoPierna - u.largoPierna;
+      largoStatus = deltaLen < -2 ? "Corto" : deltaLen <= 2 ? "Perfecto" : "Largo";
+    } else {
+      deltaLen = 0;
+      largoStatus = "Perfecto";
+    }
 
     return {
       category: cat,
@@ -225,6 +240,8 @@ export function computeFit(user: Measurements, garment: Garment): FitResult {
         effectiveWaist,
         deltaWaist,
         deltaLen,
+        uLargoPierna: u.largoPierna,
+        gLargoPierna: g.largoPierna,
       },
     };
   }
