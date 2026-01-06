@@ -1,7 +1,7 @@
 // IMPORTANTE: Integrar theme.ts si lo estás usando
 // import { vestiTheme } from "../theme";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { VestiProductEmbed } from "../embed/VestiProductEmbed";
 import type { GarmentCategory, Garment } from "../motor/fitEngine";
 
@@ -112,8 +112,30 @@ type ProductFromShopify = {
 
 // Tipo mínimo que necesitamos de lo que viene desde App.tsx
 type FullProductFromParent = {
+  id?: number | string;
+  title?: string;
+  category?: string; // viene del loader (upper/pants/shoes)
+  imageUrl?: string | null;
+  price?: number | null;
+  currency?: string | null;
+  colorName?: string | null;
   descriptionHtml?: string;
-  category?: string; // viene del loader (upper/pants/shoes o lo que definas)
+
+  variants?: Array<{
+    id: number | string;
+    sizeLabel: string; // ej: "S", "M", "Default Title"
+    measures: {
+      hombros?: number;
+      pecho?: number;
+      cintura?: number;
+      largoTorso?: number;
+      largoPierna?: number;
+      pieLargo?: number;
+      [k: string]: any;
+    };
+    stretchPct?: number;
+    easePreset?: string;
+  }>;
 };
 
 type ProductPageVestiDemoProps = {
@@ -200,9 +222,8 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
   productFromShopify,
   fullProductFromParent,
 }) => {
-  const [selectedSizeId, setSelectedSizeId] = useState<string>(
-    DEMO_GARMENTS[1].id // default M
-  );
+  const [selectedSizeId, setSelectedSizeId] = useState<string>(DEMO_GARMENTS[1].id); // default M (demo)
+
   const [lastRec, setLastRec] = useState<LastRecState>(null);
 
   const hasRealProduct =
@@ -270,9 +291,67 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
     };
   }, [hasRealProduct, productFromShopify]);
 
+  // 👉 Opciones de talle (prendas) para el motor:
+  // - Si llega producto real desde el loader (fullProductFromParent.variants), lo usamos.
+  // - Si no, caemos al set DEMO (Campera Puffer).
+  const garmentOptions: DemoGarment[] = useMemo(() => {
+    const variants = fullProductFromParent?.variants;
+    if (Array.isArray(variants) && variants.length > 0) {
+      const baseName =
+        (fullProductFromParent?.title && String(fullProductFromParent.title).trim()) ||
+        (hasRealProduct && productFromShopify?.productTitle?.trim()
+          ? productFromShopify.productTitle.trim()
+          : DEMO_PRODUCT.name);
+
+      const baseBrand =
+        (hasRealProduct && productFromShopify?.shopDomain
+          ? productFromShopify.shopDomain
+          : "Vesti") || "Vesti";
+
+      return variants.map((v) => ({
+        id: String(v.id),
+        name: baseName,
+        brand: baseBrand,
+        category: String(fullProductFromParent?.category ?? DEMO_CATEGORY),
+        sizeLabel: String(v.sizeLabel ?? "Default Title"),
+        measures: {
+          hombros: Number(v.measures?.hombros ?? 0),
+          pecho: Number(v.measures?.pecho ?? 0),
+          cintura: Number(v.measures?.cintura ?? 0),
+          largoTorso: Number(v.measures?.largoTorso ?? 0),
+          largoPierna: Number(v.measures?.largoPierna ?? 0),
+          pieLargo: Number(v.measures?.pieLargo ?? 0),
+        },
+        stretchPct: Number(v.stretchPct ?? 0),
+        easePreset: String(v.easePreset ?? "regular"),
+      }));
+    }
+
+    return DEMO_GARMENTS;
+  }, [
+    fullProductFromParent?.variants,
+    fullProductFromParent?.title,
+    fullProductFromParent?.category,
+    hasRealProduct,
+    productFromShopify?.productTitle,
+    productFromShopify?.shopDomain,
+  ]);
+
+  // Si cambian las opciones (ej: llega producto real) y el talle seleccionado no existe,
+  // seleccionamos el primer talle disponible para evitar quedarnos con un id de demo.
+  useEffect(() => {
+    if (!Array.isArray(garmentOptions) || garmentOptions.length === 0) return;
+
+    const exists = garmentOptions.some((g) => String(g.id) === String(selectedSizeId));
+    if (!exists) {
+      setSelectedSizeId(String(garmentOptions[0].id));
+    }
+  }, [garmentOptions, selectedSizeId]);
+
+
   const selectedGarment = useMemo(
-    () => DEMO_GARMENTS.find((g) => g.id === selectedSizeId) ?? DEMO_GARMENTS[0],
-    [selectedSizeId]
+    () => garmentOptions.find((g) => String(g.id) === String(selectedSizeId)) ?? garmentOptions[0],
+    [garmentOptions, selectedSizeId]
   );
 
   const buildMensaje = (tag: string): string => {
@@ -332,16 +411,16 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
 
     const currentId =
       (garment && (garment as DemoGarment).id) || selectedGarment.id;
-    const currentIndex = DEMO_GARMENTS.findIndex((g) => g.id === currentId);
+    const currentIndex = garmentOptions.findIndex((g) => String(g.id) === String(currentId));
 
     if (currentIndex >= 0) {
       if (
         tagNormalizado === "SIZE_UP" &&
-        currentIndex < DEMO_GARMENTS.length - 1
+        currentIndex < garmentOptions.length - 1
       ) {
-        tallaSugerida = DEMO_GARMENTS[currentIndex + 1].sizeLabel;
+        tallaSugerida = garmentOptions[currentIndex + 1].sizeLabel;
       } else if (tagNormalizado === "SIZE_DOWN" && currentIndex > 0) {
-        tallaSugerida = DEMO_GARMENTS[currentIndex - 1].sizeLabel;
+        tallaSugerida = garmentOptions[currentIndex - 1].sizeLabel;
       }
     }
 
@@ -614,7 +693,7 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
                 flexWrap: "wrap",
               }}
             >
-              {DEMO_GARMENTS.map((g) => {
+              {garmentOptions.map((g) => {
                 const active = g.id === selectedSizeId;
                 return (
                   <button
