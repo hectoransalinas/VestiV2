@@ -298,6 +298,16 @@ function round2(n: number) {
 // Recomendación
 // ------------------------------
 
+
+function cleanSizeLabel(label?: string) {
+  const raw = String(label ?? "").trim();
+  if (!raw) return "Único";
+  if (/^default\s*title$/i.test(raw)) return "Único";
+  if (/^default$/i.test(raw)) return "Único";
+  return raw;
+}
+
+
 export function makeRecommendation(params: {
   category: GarmentCategory;
   garment: Garment;
@@ -324,7 +334,7 @@ export function makeRecommendation(params: {
     if (tag === "OK" && largoStatus !== "Perfecto") tag = "CHECK_LENGTH";
 
     // Mensajes por caso (sin pecho/hombros)
-    const sizeLabel = garment.sizeLabel ? ` ${garment.sizeLabel}` : "";
+    const sizeLabel = ` ${cleanSizeLabel(garment.sizeLabel)}`;
 
     const cinturaLine =
       cinturaStatus === "Perfecto"
