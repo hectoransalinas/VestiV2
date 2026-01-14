@@ -393,7 +393,18 @@ export function makeRecommendation(params: {
   }
 
   // ✅ UPPER — recomendación simple y coherente
-  const overall = fit.overall;
+  // ✅ UPPER — en prendas superiores, cintura y largoTorso son advertencias (no cambian talle)
+  const overall: FitWidth = (() => {
+    if (cat !== "upper") return fit.overall;
+
+    const decisiveZones: ZoneWidth[] = ["hombros", "pecho"];
+    const decisive = fit.widths.filter((w) => decisiveZones.includes(w.zone));
+
+    const hasTight = decisive.some((w) => w.status === "Ajustado");
+    const hasLoose = decisive.some((w) => w.status === "Holgado");
+
+    return hasTight ? "Ajustado" : hasLoose ? "Holgado" : "Perfecto";
+  })();
 
   if (overall === "Ajustado") {
     return {
@@ -412,6 +423,30 @@ export function makeRecommendation(params: {
         "Vemos holgura en alguna zona. Si preferís un calce más al cuerpo, compará con un talle menos.",
     };
   }
+  // ✅ UPPER — si el talle está OK por hombros/pecho pero hay advertencias,
+  // mostramos mensaje de revisión sin cambiar el talle.
+  if (cat === "upper" && overall === "Perfecto") {
+    const cintura = fit.widths.find((w) => w.zone === "cintura")?.status ?? "Perfecto";
+    const largoTorso = fit.lengths.find((l) => l.zone === "largoTorso")?.status ?? "Perfecto";
+
+    const hasWarn = cintura !== "Perfecto" || largoTorso !== "Perfecto";
+
+    if (hasWarn) {
+      const parts: string[] = [];
+      if (cintura !== "Perfecto") parts.push(`cintura: ${cintura.toLowerCase()}`);
+      if (largoTorso !== "Perfecto") parts.push(`largo torso: ${largoTorso.toLowerCase()}`);
+
+      return {
+        tag: "OK",
+        title: "Revisá el calce antes de comprar",
+        message:
+          "El talle se ve bien en hombros y pecho. " +
+          `Vemos una alerta en ${parts.join(" y ")}. ` +
+          "Podés comparar con otro talle si buscás un calce distinto, pero no es necesario por defecto.",
+      };
+    }
+  }
+
 
   return {
     tag: "OK",
