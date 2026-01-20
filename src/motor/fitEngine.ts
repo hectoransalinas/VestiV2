@@ -431,7 +431,7 @@ export function makeRecommendation(params: {
     // cuando la holgura es *excesiva* (>= EXTREME_LOOSE_CM).
     const hasLoose =
       preset === "oversize"
-        ? decisive.some((w) => w.status === "Holgado" && w.deltaCm >= EXTREME_LOOSE_CM)
+        ? decisive.some((w) => w.status === "Holgado" && w.delta >= EXTREME_LOOSE_CM)
         : decisive.some((w) => w.status === "Holgado");
 
     return hasTight ? "Ajustado" : hasLoose ? "Holgado" : "Perfecto";
