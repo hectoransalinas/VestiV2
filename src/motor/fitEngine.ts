@@ -1,193 +1,491 @@
-
 // src/motor/fitEngine.ts
 /**
- * VESTI AI — Fit Engine (v4)
- * Soporte de perfiles de calce: slim / regular / oversize
- *
- * Reglas clave:
- * - UPPER:
- *   * Decisorios: hombros, pecho
- *   * Advertencia: cintura, largoTorso
- * - PANTS:
- *   * Decisorio: cintura
- *   * Advertencia: largoPierna
- * - SHOES:
- *   * Decisorio: pie_largo
- *
- * Perfil de calce:
- * - slim: tolerancia baja (sube talle antes)
- * - regular: baseline
- * - oversize: tolerancia alta (holgado => Perfecto (Suelto), no baja talle)
+ * VESTI AI — Fit Engine (v2)
+ * Objetivo:
+ * - Soportar categorías Shopify + demo + legacy (ES/EN) y normalizarlas a:
+ *   "upper" | "pants" | "shoes"
+ * - PANTS v1.0 (acordado):
+ *   * El talle lo decide SOLO la cintura
+ *   * El largo NO cambia talle; solo dispara CHECK_LENGTH (si talle OK)
+ *   * Umbrales:
+ *       - Cintura: Perfecto 0..3cm de holgura (>=0), Holgado >3, Ajustado <0
+ *       - Largo pierna: Perfecto ±2cm, Corto <-2, Largo >2
  */
 
-export type Category = "upper" | "pants" | "shoes";
-export type EasePreset = "slim" | "regular" | "oversize";
+export type CanonCategory = "upper" | "pants" | "shoes";
+
+/**
+ * Mantengo compatibilidad con lo que puede venir de Shopify/demo/histórico.
+ * En runtime SIEMPRE lo normalizamos a CanonCategory con normalizeCategory().
+ */
+export type GarmentCategory =
+  | CanonCategory
+  | "remera"
+  | "camiseta"
+  | "buzo"
+  | "campera"
+  | "upper"
+  | "pantalon"
+  | "pantalón"
+  | "jeans"
+  | "pants"
+  | "zapatillas"
+  | "calzado"
+  | "shoes"
+  | string;
+
+export type FitWidth = "Perfecto" | "Ajustado" | "Holgado";
+export type FitLength = "Corto" | "Perfecto" | "Largo";
+
+export type ZoneWidth = "hombros" | "pecho" | "cintura";
+export type ZoneLength = "largoTorso" | "largoPierna";
 
 export type Measurements = {
-  hombros?: number;
-  pecho?: number;
-  cintura?: number;
-  largoTorso?: number;
-  largoPierna?: number;
-  pie_largo?: number;
+  hombros: number;
+  pecho: number;
+  cintura: number;
+  largoTorso: number;
+  largoPierna: number;
 };
 
-export type Garment = {
+export type EasePreset = "slim" | "regular" | "oversize";
+
+// Oversize: solo sugerimos BAJAR talle si está *excesivamente* holgado.
+// Umbral acordado: 10 cm o más (en hombros o pecho).
+const EXTREME_LOOSE_CM = 10;
+
+export interface Garment {
+  id?: string | number;
   sizeLabel?: string;
+  category: GarmentCategory;
+  brand?: string;
   measures: Measurements;
-  stretchPct?: number;
   easePreset?: EasePreset;
-};
+  stretchPct: number; // 0..100 (porcentaje)
+}
 
-export type FitStatus = "Perfecto" | "Ajustado" | "Holgado" | "Perfecto (Suelto)";
-export type RecommendationTag = "OK" | "SIZE_UP" | "SIZE_DOWN" | "CHECK_WARNING";
+export interface ZoneFitWidth {
+  zone: ZoneWidth;
+  status: FitWidth;
+  delta: number; // holgura efectiva (prenda - cuerpo) en cm (positivo = holgura)
+}
 
-// -------------------- UTILIDADES --------------------
+export interface ZoneFitLength {
+  zone: ZoneLength;
+  status: FitLength;
+  delta: number; // prenda - cuerpo (positivo = más largo)
+}
 
-const num = (v?: number) => (typeof v === "number" ? v : 0);
+export interface FitResult {
+  category: CanonCategory;
+  overall: FitWidth; // estado global (en pants = cintura)
+  widths: ZoneFitWidth[];
+  lengths: ZoneFitLength[];
+  debug?: Record<string, any>;
+}
 
-const stretchFactor = (pct?: number) => 1 + num(pct) / 100;
+export type RecommendationTag = "OK" | "SIZE_UP" | "SIZE_DOWN" | "CHECK_LENGTH";
 
-const easeTable = {
+export interface Recommendation {
+  tag: RecommendationTag;
+  title: string;
+  message: string;
+}
+
+// ------------------------------
+// Helpers
+// ------------------------------
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function safeNum(n: any, fallback = 0) {
+  // Acepta number o string numérico (viene mucho desde JSON/metafields)
+  if (typeof n === "number" && Number.isFinite(n)) return n;
+  if (typeof n === "string") {
+    const t = n.trim().replace(",", ".");
+    if (t !== "" && !Number.isNaN(Number(t)) && Number.isFinite(Number(t))) return Number(t);
+  }
+  return fallback;
+}
+
+/**
+ * Normaliza cualquier input a CanonCategory.
+ * Importante: esto es la base para que NO vuelvan los bugs de "pantalon" vs "pants".
+ */
+export function normalizeCategory(input: GarmentCategory): CanonCategory {
+  const s = String(input ?? "")
+    .trim()
+    .toLowerCase();
+
+  // pants
+  if (
+    s === "pants" ||
+    s === "pantalon" ||
+    s === "pantalón" ||
+    s === "jeans" ||
+    s === "jean" ||
+    s === "pantalones" ||
+    s.includes("pants")
+  ) {
+    return "pants";
+  }
+
+  // shoes
+  if (
+    s === "shoes" ||
+    s === "zapatillas" ||
+    s === "calzado" ||
+    s === "zapatos" ||
+    s.includes("shoe")
+  ) {
+    return "shoes";
+  }
+
+  // upper (default)
+  return "upper";
+}
+
+export function normalizeEasePreset(input?: any): EasePreset {
+  const s = String(input ?? "").trim().toLowerCase();
+  if (s === "slim" || s === "ajustado" || s === "fit" || s === "entallado") return "slim";
+  if (
+    s === "oversize" ||
+    s === "over" ||
+    s === "boxy" ||
+    s === "loose" ||
+    s === "suelto"
+  )
+    return "oversize";
+  return "regular";
+}
+
+// ------------------------------
+// Parámetros base (ease, tolerancias, pesos)
+// ------------------------------
+
+type EaseTable = Record<CanonCategory, Record<EasePreset, Measurements>>;
+type TolTable = Record<CanonCategory, Measurements>;
+
+const EASE_TABLE: EaseTable = {
   upper: {
-    slim: { pecho: 1, hombros: 0 },
-    regular: { pecho: 4, hombros: 2 },
-    oversize: { pecho: 8, hombros: 4 },
+    slim: { hombros: 0.5, pecho: 2, cintura: 2, largoTorso: 1, largoPierna: 0 },
+    regular: { hombros: 1, pecho: 4, cintura: 4, largoTorso: 1, largoPierna: 0 },
+    oversize: { hombros: 2, pecho: 8, cintura: 8, largoTorso: 1, largoPierna: 0 },
   },
+  // En pants el ease aplicado a cintura se maneja con la misma tabla,
+  // pero la regla final de talle es v1.0 por cintura.
   pants: {
-    slim: { cintura: 0 },
-    regular: { cintura: 2 },
-    oversize: { cintura: 4 },
+    slim: { hombros: 0, pecho: 0, cintura: 1, largoTorso: 0, largoPierna: 0 },
+    regular: { hombros: 0, pecho: 0, cintura: 3, largoTorso: 0, largoPierna: 0 },
+    oversize: { hombros: 0, pecho: 0, cintura: 5, largoTorso: 0, largoPierna: 0 },
+  },
+  // shoes todavía no usa este motor (lo dejamos neutro para no romper)
+  shoes: {
+    slim: { hombros: 0, pecho: 0, cintura: 0, largoTorso: 0, largoPierna: 0 },
+    regular: { hombros: 0, pecho: 0, cintura: 0, largoTorso: 0, largoPierna: 0 },
+    oversize: { hombros: 0, pecho: 0, cintura: 0, largoTorso: 0, largoPierna: 0 },
   },
 };
 
-// -------------------- CORE --------------------
+const BASE_TOLERANCES: TolTable = {
+  upper: { hombros: 1, pecho: 2, cintura: 2, largoTorso: 2, largoPierna: 0 },
+  // pants: las tolerancias importantes las definimos en la regla v1.0
+  pants: { hombros: 0, pecho: 0, cintura: 0, largoTorso: 0, largoPierna: 0 },
+  shoes: { hombros: 0, pecho: 0, cintura: 0, largoTorso: 0, largoPierna: 0 },
+};
 
-export function computeFit(
-  category: Category,
-  user: Measurements,
-  garment: Garment
-) {
-  const ease: EasePreset = garment.easePreset ?? "regular";
-  const stretch = stretchFactor(garment.stretchPct);
+// ------------------------------
+// Core: computeFit
+// ------------------------------
 
-  let tag: RecommendationTag = "OK";
-  const zones: { zone: string; status: FitStatus }[] = [];
+export function computeFit(user: Measurements, garment: Garment): FitResult {
+  const cat = normalizeCategory(garment.category);
+  const preset: EasePreset = garment.easePreset ?? "regular";
+  const ease = EASE_TABLE[cat][preset];
+  const stretch = clamp(safeNum(garment.stretchPct, 0), 0, 100) / 100;
 
-  // ---------- UPPER ----------
-  if (category === "upper") {
-    // Decisorios
-    const pechoUser = num(user.pecho);
-    const pechoGarment =
-      (num(garment.measures.pecho) + easeTable.upper[ease].pecho) * stretch;
+  const u: Measurements = {
+    hombros: safeNum(user.hombros),
+    pecho: safeNum(user.pecho),
+    cintura: safeNum(user.cintura),
+    largoTorso: safeNum(user.largoTorso),
+    largoPierna: safeNum(user.largoPierna),
+  };
 
-    const hombrosUser = num(user.hombros);
-    const hombrosGarment =
-      (num(garment.measures.hombros) + easeTable.upper[ease].hombros) * stretch;
+  const g: Measurements = {
+    hombros: safeNum(garment.measures?.hombros),
+    pecho: safeNum(garment.measures?.pecho),
+    cintura: safeNum(garment.measures?.cintura),
+    largoTorso: safeNum(garment.measures?.largoTorso),
+    largoPierna: safeNum(garment.measures?.largoPierna),
+  };
 
-    let pechoStatus: FitStatus = "Perfecto";
-    if (pechoUser > pechoGarment) {
-      pechoStatus = "Ajustado";
-      tag = "SIZE_UP";
-    } else if (pechoUser < pechoGarment - 8 && ease !== "oversize") {
-      pechoStatus = "Holgado";
-    } else if (ease === "oversize" && pechoUser < pechoGarment) {
-      pechoStatus = "Perfecto (Suelto)";
+  // ---------- PANTS v1.0 ----------
+  if (cat === "pants") {
+    // Cintura efectiva por elasticidad
+    const effectiveWaist = g.cintura * (1 + stretch);
+    const deltaWaist = effectiveWaist - u.cintura; // + holgura, - ajustado
+
+    // Perfecto: 0..3, Holgado: >3, Ajustado: <0
+    const cinturaStatus: FitWidth =
+      deltaWaist < 0 ? "Ajustado" : deltaWaist <= 3 ? "Perfecto" : "Holgado";
+
+    // Largo pierna: Perfecto ±2
+    // Si falta dato (0), no forzamos alerta (evita bug de quedar siempre "Largo")
+    let deltaLen = g.largoPierna - u.largoPierna;
+    let largoStatus: FitLength = "Perfecto";
+
+    if (g.largoPierna > 0 && u.largoPierna > 0) {
+      // delta = prenda - cuerpo (positivo => a la prenda le sobra largo)
+      deltaLen = g.largoPierna - u.largoPierna;
+      largoStatus = deltaLen < -2 ? "Corto" : deltaLen <= 2 ? "Perfecto" : "Largo";
+    } else {
+      deltaLen = 0;
+      largoStatus = "Perfecto";
     }
 
-    let hombrosStatus: FitStatus = "Perfecto";
-    if (hombrosUser > hombrosGarment) {
-      hombrosStatus = "Ajustado";
-      tag = "SIZE_UP";
-    } else if (hombrosUser < hombrosGarment - 6 && ease !== "oversize") {
-      hombrosStatus = "Holgado";
-    } else if (ease === "oversize" && hombrosUser < hombrosGarment) {
-      hombrosStatus = "Perfecto (Suelto)";
-    }
-
-    zones.push({ zone: "pecho", status: pechoStatus });
-    zones.push({ zone: "hombros", status: hombrosStatus });
-
-    // Advertencias
-    if (num(user.cintura) && num(garment.measures.cintura)) {
-      zones.push({
-        zone: "cintura",
-        status:
-          num(user.cintura) < num(garment.measures.cintura)
-            ? "Holgado"
-            : "Perfecto",
-      });
-      if (tag === "OK") tag = "CHECK_WARNING";
-    }
-
-    if (num(user.largoTorso) && num(garment.measures.largoTorso)) {
-      zones.push({
-        zone: "largoTorso",
-        status:
-          num(user.largoTorso) > num(garment.measures.largoTorso)
-            ? "Corto"
-            : "Perfecto",
-      });
-      if (tag === "OK") tag = "CHECK_WARNING";
-    }
-
-    return { tag, zones };
+    return {
+      category: cat,
+      overall: cinturaStatus,
+      widths: [{ zone: "cintura", status: cinturaStatus, delta: round2(deltaWaist) }],
+      lengths: [{ zone: "largoPierna", status: largoStatus, delta: round2(deltaLen) }],
+      debug: {
+        catRaw: garment.category,
+        cat,
+        preset,
+        stretchPct: garment.stretchPct,
+        effectiveWaist,
+        deltaWaist,
+        deltaLen,
+        uLargoPierna: u.largoPierna,
+        gLargoPierna: g.largoPierna,
+      },
+    };
   }
 
-  // ---------- PANTS ----------
-  if (category === "pants") {
-    const cinturaUser = num(user.cintura);
-    const cinturaGarment =
-      (num(garment.measures.cintura) +
-        (easeTable.pants[ease]?.cintura ?? 0)) *
-      stretch;
+  // ---------- UPPER (lógica existente simplificada) ----------
+  // Se calcula holgura efectiva por elasticidad + ease.
+  const widths: ZoneWidth[] = ["hombros", "pecho", "cintura"];
+  const lengths: ZoneLength[] = ["largoTorso"];
 
-    let cinturaStatus: FitStatus = "Perfecto";
+  const widthsFit: ZoneFitWidth[] = widths.map((z) => {
+    const baseTol = BASE_TOLERANCES[cat][z];
+    const easeCm = ease[z];
+    const effectiveGarment = g[z] * (1 + stretch) + easeCm;
+    const delta = effectiveGarment - u[z];
 
-    if (cinturaUser > cinturaGarment) {
-      cinturaStatus = "Ajustado";
-      tag = "SIZE_UP";
-    } else if (cinturaUser < cinturaGarment - 4 && ease !== "oversize") {
-      cinturaStatus = "Holgado";
-      tag = "SIZE_DOWN";
-    } else if (ease === "oversize" && cinturaUser < cinturaGarment) {
-      cinturaStatus = "Perfecto (Suelto)";
+    // Regla genérica:
+    // - Ajustado si delta < -tol
+    // - Perfecto si |delta| <= tol
+    // - Holgado si delta > tol
+    const tol = baseTol;
+    const status: FitWidth =
+      delta < -tol ? "Ajustado" : delta > tol ? "Holgado" : "Perfecto";
+
+    return { zone: z, status, delta: round2(delta) };
+  });
+
+  const lengthsFit: ZoneFitLength[] = lengths.map((z) => {
+    const tol = BASE_TOLERANCES[cat][z];
+    const delta = (g[z] + ease[z]) - u[z];
+    const status: FitLength =
+      delta < -tol ? "Corto" : delta > tol ? "Largo" : "Perfecto";
+    return { zone: z, status, delta: round2(delta) };
+  });
+
+  // overall: si hay algún "Ajustado" prioriza Ajustado; si no, si hay "Holgado" => Holgado; si no => Perfecto
+  let overall: FitWidth = "Perfecto";
+  if (widthsFit.some((w) => w.status === "Ajustado")) overall = "Ajustado";
+  else if (widthsFit.some((w) => w.status === "Holgado")) overall = "Holgado";
+
+  return {
+    category: cat,
+    overall,
+    widths: widthsFit,
+    lengths: lengthsFit,
+    debug: { catRaw: garment.category, cat, preset, stretchPct: garment.stretchPct },
+  };
+}
+
+function round2(n: number) {
+  return Math.round(n * 100) / 100;
+}
+
+// ------------------------------
+// Recomendación
+// ------------------------------
+
+
+function cleanSizeLabel(label?: string) {
+  const raw = String(label ?? "").trim();
+  if (!raw) return "Único";
+  if (/^default\s*title$/i.test(raw)) return "Único";
+  if (/^default$/i.test(raw)) return "Único";
+  return raw;
+}
+
+
+export function makeRecommendation(params: {
+  category: GarmentCategory;
+  garment: Garment;
+  fit: FitResult;
+}): Recommendation {
+  const cat = normalizeCategory(params.category ?? params.garment.category);
+  const garment = params.garment;
+  const fit = params.fit;
+
+  // Oversize: solo sugerimos BAJAR talle si está *excesivamente* holgado.
+  // Umbral acordado: 10 cm o más en zona decisoria (pecho/hombros).
+  const EXTREME_OVERSIZE_LOOSE_CM = 10;
+  const easePreset = String(garment.easePreset ?? "regular").toLowerCase();
+  const isOversize = easePreset === "oversize";
+
+  // ✅ PANTS v1.0 — solo cintura decide talle; largo solo warning
+  if (cat === "pants") {
+    const cintura = fit.widths.find((w) => w.zone === "cintura");
+    const largo = fit.lengths.find((l) => l.zone === "largoPierna");
+
+    const cinturaStatus: FitWidth = cintura?.status ?? "Perfecto";
+    const largoStatus: FitLength = largo?.status ?? "Perfecto";
+
+    // Tag principal por cintura
+    let tag: RecommendationTag = "OK";
+    if (cinturaStatus === "Ajustado") tag = "SIZE_UP";
+    else if (cinturaStatus === "Holgado") tag = "SIZE_DOWN";
+
+    // CHECK_LENGTH solo si talle OK (acordado)
+    if (tag === "OK" && largoStatus !== "Perfecto") tag = "CHECK_LENGTH";
+
+    // Mensajes por caso (sin pecho/hombros)
+    const sizeLabel = ` ${cleanSizeLabel(garment.sizeLabel)}`;
+
+    const cinturaLine =
+      cinturaStatus === "Perfecto"
+        ? "La cintura se ve bien para tus medidas."
+        : cinturaStatus === "Ajustado"
+        ? "La cintura se ve ajustada para tus medidas."
+        : "La cintura se ve holgada para tus medidas.";
+
+    const largoLine =
+      largoStatus === "Perfecto"
+        ? ""
+        : largoStatus === "Corto"
+        ? "Revisá el largo: podría quedarte corto."
+        : "Revisá el largo: podría quedarte largo.";
+
+    if (tag === "SIZE_UP") {
+      return {
+        tag,
+        title: "Talle sugerido: subir",
+        message:
+          `Este talle${sizeLabel} podría quedarte ajustado en la cintura. ` +
+          "Probá compararlo con un talle más. " +
+          (largoLine ? ` ${largoLine}` : ""),
+      };
     }
 
-    zones.push({ zone: "cintura", status: cinturaStatus });
-
-    // Advertencia largo
-    if (num(user.largoPierna) && num(garment.measures.largoPierna)) {
-      zones.push({
-        zone: "largoPierna",
-        status:
-          num(user.largoPierna) > num(garment.measures.largoPierna)
-            ? "Corto"
-            : "Perfecto",
-      });
-      if (tag === "OK") tag = "CHECK_WARNING";
+    if (tag === "SIZE_DOWN") {
+      return {
+        tag,
+        title: "Talle sugerido: bajar",
+        message:
+          `Este talle${sizeLabel} se ve holgado en la cintura. ` +
+          "Si preferís un calce más al cuerpo, compará con un talle menos. " +
+          (largoLine ? ` ${largoLine}` : ""),
+      };
     }
 
-    return { tag, zones };
+    if (tag === "CHECK_LENGTH") {
+      return {
+        tag,
+        title: "Revisá el largo antes de comprar",
+        message:
+          `En cintura, este talle${sizeLabel} se ve bien. ` +
+          (largoLine || "Revisá el largo para confirmar cómo te gusta que caiga."),
+      };
+    }
+
+    // OK
+    return {
+      tag,
+      title: "Este talle parece adecuado para vos",
+      message:
+        `En cintura, este talle${sizeLabel} se ve bien para tus medidas. ` +
+        (largoLine ? ` ${largoLine}` : ""),
+    };
   }
 
-  // ---------- SHOES ----------
-  if (category === "shoes") {
-    const footUser = num(user.pie_largo);
-    const footGarment = num(garment.measures.pie_largo);
+  // ✅ UPPER — recomendación simple y coherente
+  // ✅ UPPER — en prendas superiores, cintura y largoTorso son advertencias (no cambian talle)
+  const overall: FitWidth = (() => {
+    if (cat !== "upper") return fit.overall;
 
-    let footStatus: FitStatus = "Perfecto";
-    if (footUser > footGarment) {
-      footStatus = "Ajustado";
-      tag = "SIZE_UP";
-    } else if (footUser < footGarment - 0.5) {
-      footStatus = "Holgado";
-      tag = "SIZE_DOWN";
-    }
+    const preset = normalizeEasePreset(garment.easePreset);
 
-    zones.push({ zone: "pie_largo", status: footStatus });
-    return { tag, zones };
+    const decisiveZones: ZoneWidth[] = ["hombros", "pecho"];
+    const decisive = fit.widths.filter((w) => decisiveZones.includes(w.zone));
+
+    const hasTight = decisive.some((w) => w.status === "Ajustado");
+    // En oversize, "Holgado" es esperable. Solo lo tratamos como motivo para BAJAR talle
+    // cuando la holgura es *excesiva* (>= EXTREME_LOOSE_CM).
+    const hasLoose =
+      preset === "oversize"
+        ? decisive.some((w) => w.status === "Holgado" && w.deltaCm >= EXTREME_LOOSE_CM)
+        : decisive.some((w) => w.status === "Holgado");
+
+    return hasTight ? "Ajustado" : hasLoose ? "Holgado" : "Perfecto";
+  })();
+
+  if (overall === "Ajustado") {
+    return {
+      tag: "SIZE_UP",
+      title: "Talle sugerido: subir",
+      message:
+        "Vemos una o más zonas ajustadas. Si querés estar más cómodo/a, compará con un talle más.",
+    };
   }
 
-  return { tag: "OK", zones: [] };
+  if (overall === "Holgado") {
+    const preset = normalizeEasePreset(garment.easePreset);
+    return {
+      tag: "SIZE_DOWN",
+      title: "Talle sugerido: bajar",
+      message:
+        preset === "oversize"
+          ? `En una prenda oversize es normal ver holgura, pero en este caso parece *muy* suelta (≥ ${EXTREME_LOOSE_CM} cm) en hombros o pecho. Si querés que el oversize no quede enorme, compará con un talle menos.`
+          : "Vemos holgura en alguna zona. Si preferís un calce más al cuerpo, compará con un talle menos.",
+    };
+  }
+  // ✅ UPPER — si el talle está OK por hombros/pecho pero hay advertencias,
+  // mostramos mensaje de revisión sin cambiar el talle.
+  if (cat === "upper" && overall === "Perfecto") {
+    const cintura = fit.widths.find((w) => w.zone === "cintura")?.status ?? "Perfecto";
+    const largoTorso = fit.lengths.find((l) => l.zone === "largoTorso")?.status ?? "Perfecto";
+
+    const hasWarn = cintura !== "Perfecto" || largoTorso !== "Perfecto";
+
+    if (hasWarn) {
+      const parts: string[] = [];
+      if (cintura !== "Perfecto") parts.push(`cintura: ${cintura.toLowerCase()}`);
+      if (largoTorso !== "Perfecto") parts.push(`largo torso: ${largoTorso.toLowerCase()}`);
+
+      return {
+        tag: "OK",
+        title: "Revisá el calce antes de comprar",
+        message:
+          "El talle se ve bien en hombros y pecho. " +
+          `Vemos una alerta en ${parts.join(" y ")}. ` +
+          "Podés comparar con otro talle si buscás un calce distinto, pero no es necesario por defecto.",
+      };
+    }
+  }
+
+
+  return {
+    tag: "OK",
+    title: "Este talle parece adecuado para vos",
+    message:
+      "En general el calce se ve bien para tus medidas. Revisá las zonas clave para confirmar tu preferencia.",
+  };
 }
