@@ -208,6 +208,9 @@ export function computeFit(user: Measurements, garment: Garment): FitResult {
 
   // ---------- PANTS v1.0 ----------
   if (cat === "pants") {
+  // Ease preset (slim/regular/oversize). Si no viene, asumimos "regular"
+  const easePreset: EasePreset = (g.easePreset ?? "regular") as EasePreset;
+
     // Cintura efectiva por elasticidad
     const effectiveWaist = g.cintura * (1 + stretch);
     const deltaWaist = effectiveWaist - u.cintura; // + holgura, - ajustado
