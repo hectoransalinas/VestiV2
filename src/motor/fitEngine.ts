@@ -184,7 +184,12 @@ const BASE_TOLERANCES: TolTable = {
 
 export function computeFit(user: Measurements, garment: Garment): FitResult {
   const cat = normalizeCategory(garment.category);
-  const preset: EasePreset = garment.easePreset ?? "regular";
+  // Algunos catálogos (p. ej. shoes) hoy solo tienen "regular".
+  // Si llega un preset inexistente, caemos a "regular" para evitar crashes.
+  const requestedPreset: EasePreset = garment.easePreset ?? "regular";
+  const preset: EasePreset = (EASE_TABLE[cat] && (EASE_TABLE[cat] as any)[requestedPreset])
+    ? requestedPreset
+    : "regular";
   const ease = EASE_TABLE[cat][preset];
   const stretch = clamp(safeNum(garment.stretchPct, 0), 0, 100) / 100;
 
@@ -208,9 +213,6 @@ export function computeFit(user: Measurements, garment: Garment): FitResult {
 
   // ---------- PANTS v1.0 ----------
   if (cat === "pants") {
-  // Ease preset (slim/regular/oversize). Si no viene, asumimos "regular"
-  const easePreset: EasePreset = (g.easePreset ?? "regular") as EasePreset;
-
     // Cintura efectiva por elasticidad
     const effectiveWaist = g.cintura * (1 + stretch);
     const deltaWaist = effectiveWaist - u.cintura; // + holgura, - ajustado
@@ -256,50 +258,40 @@ export function computeFit(user: Measurements, garment: Garment): FitResult {
     };
   }
 
-	// ---------- SHOES ----------
-	if (cat === "shoes") {
-	  // Regla simple para demo (v1): decide SOLO por largo de pie.
-	  // delta = calzado - pie (positivo => sobra, negativo => queda corto)
-	  const delta = g.pieLargo - u.pieLargo;
+  // ---------- SHOES v1.0 (solo largo de pie) ----------
+  if (cat === "shoes") {
+    // delta = calzado - pie (positivo => sobra, negativo => queda corto)
+    const delta = g.pieLargo - u.pieLargo;
 
-	  // Umbrales (cm)
-	  // - Ajustado: si el calzado queda más corto que el pie (delta < 0)
-	  // - Perfecto: 0..0.6cm de "sobra" suele estar bien
-	  // - Holgado: >0.6cm
-	  const status: FitWidth = delta < 0 ? "Ajustado" : delta <= 0.6 ? "Perfecto" : "Holgado";
+    // Para shoes, mantenemos la semántica del motor:
+    // - lengths.pieLargo: Corto / Perfecto / Largo
+    // - overall (FitWidth) lo usamos como señal visual general
+    const lengthStatus: FitLength =
+      delta < 0 ? "Corto" : delta <= 0.6 ? "Perfecto" : "Largo";
 
-	  // Recomendación
-	  let overall: Overall = "OK";
-	  if (status === "Ajustado") overall = "SIZE_UP";
-	  // Para evitar sugerir bajar con demasiada facilidad, solo bajamos si está MUY holgado
-	  if (status === "Holgado" && delta >= 1.2) overall = "SIZE_DOWN";
+    const overall: FitWidth =
+      lengthStatus === "Corto"
+        ? "Ajustado"
+        : lengthStatus === "Largo"
+        ? "Holgado"
+        : "Perfecto";
 
-	  const message =
-	    status === "Ajustado"
-	      ? "Te queda chico en el largo. Probá un talle más."
-	      : status === "Holgado"
-	      ? "Te queda holgado en el largo. Si buscás un calce más justo, probá un talle menos."
-	      : "El largo parece adecuado.";
-
-	  return {
-	    cat,
-	    easePreset,
-	    score: 0,
-	    widths: [],
-	    lengths: [{ zone: "pieLargo", status: status === "Ajustado" ? "Corto" : status === "Holgado" ? "Largo" : "Perfecto", delta: round2(delta) }],
-	    overall,
-	    message,
-	    debug: {
-	      catRaw: garment.category,
-	      cat,
-	      preset,
-	      stretchPct: garment.stretchPct,
-	      delta,
-	      uPieLargo: u.pieLargo,
-	      gPieLargo: g.pieLargo,
-	    },
-	  };
-	}
+    return {
+      category: cat,
+      overall,
+      widths: [],
+      lengths: [{ zone: "pieLargo", status: lengthStatus, delta: round2(delta) }],
+      debug: {
+        catRaw: garment.category,
+        cat,
+        preset,
+        stretchPct: garment.stretchPct,
+        delta,
+        uPieLargo: u.pieLargo,
+        gPieLargo: g.pieLargo,
+      },
+    };
+  }
 
   // ---------- UPPER (lógica existente simplificada) ----------
   // Se calcula holgura efectiva por elasticidad + ease.
