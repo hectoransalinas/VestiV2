@@ -218,7 +218,7 @@ export function computeFit(user: Measurements, garment: Garment): FitResult {
     // Para pantalón el "ease" define cuánta holgura todavía consideramos "Perfecto".
     // - slim: tolera menos holgura
     // - oversize: tolera más holgura
-    const perfectMax = (EASE_TABLE.pants[easePreset]?.cintura ?? 3) as number;
+    const perfectMax = (EASE_TABLE.pants[preset]?.cintura ?? 3) as number;
     // Perfecto: 0..perfectMax, Holgado: >perfectMax, Ajustado: <0
     const cinturaStatus: FitWidth =
       deltaWaist < 0 ? "Ajustado" : deltaWaist <= perfectMax ? "Perfecto" : "Holgado";
