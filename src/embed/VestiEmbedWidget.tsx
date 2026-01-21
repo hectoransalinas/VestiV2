@@ -2,7 +2,7 @@
 // import { vestiTheme } from "../theme";
 // -------------------------------
 // Agregar wrappers de estilo Shopify Premium aquí
-import React, { useMemo, useState, useRef, useEffect } from "react";
+import React, { useEffect, useMemo, useState, useRef, useEffect } from "react";
 import {
   Garment,
   GarmentCategory,
@@ -32,6 +32,7 @@ const defaultPerfil: Measurements = {
   cintura: 82,
   largoTorso: 52,
   largoPierna: 102,
+  pieLargo: 26,
 };
 
 // -------------------- Helpers de color y layout --------------------
@@ -284,6 +285,16 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
   const [showCreatorHelp, setShowCreatorHelp] = useState<boolean>(true);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
+  // En calzado, necesitamos que el largo de pie esté dentro del perfil (user.pieLargo)
+  // para que el motor recalcule al cambiar el input.
+  useEffect(() => {
+    const cat: any = categoria;
+    if (cat === "calzado" || cat === "shoes") {
+      setUser((prev) => ({ ...prev, pieLargo: (prev as any).pieLargo ?? 26 }));
+    }
+  }, [categoria]);
+
+
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     if ((categoria as any) === "pantalon") return "bottom";
     if ((categoria as any) === "pants") return "bottom";
@@ -294,9 +305,9 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
   });
 
   const lastPayloadRef = useRef<string | null>(null);
-  const [footLength, setFootLength] = useState<number>(26);
 
   const fit = useMemo(() => computeFit(user, prenda), [user, prenda]);
+  const footLength = user.pieLargo ?? 26;
 
   const rec = useMemo(
     () =>
@@ -420,11 +431,6 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
       const val = Number(String(e.target.value).replace(",", "."));
       setUser((prev) => ({ ...prev, [field]: isNaN(val) ? 0 : val }));
     };
-
-  const handleFootChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = Number(String(e.target.value).replace(",", "."));
-    setFootLength(isNaN(val) ? 0 : val);
-  };
 
   const creandoAvatar = !avatarUrl;
 
@@ -731,7 +737,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
         )}
 
         {viewMode === "shoes" && (
-          <Field label="Largo pie (cm)" value={footLength} onChange={handleFootChange} />
+          <Field label="Largo pie (cm)" value={user.pieLargo ?? 26} onChange={handleChange("pieLargo")} />
         )}
       </div>
 
