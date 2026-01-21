@@ -71,8 +71,59 @@ type OverlayProps = {
   footLength: number;
 };
 
-// (SHOES) La lógica de talles se calcula con el motor (fitEngine). No usamos mapeos heurísticos.
+// Mapear largo de pie en cm -> talle EU aproximado (36–45)
+function mapFootToEuSize(lenCm: number): number | null {
+  if (!Number.isFinite(lenCm) || lenCm <= 0) return null;
 
+  // Rango orientativo, luego se puede ajustar por marca
+  if (lenCm < 23.0) return 36;
+  if (lenCm < 23.7) return 37;
+  if (lenCm < 24.4) return 38;
+  if (lenCm < 25.1) return 39;
+  if (lenCm < 25.8) return 40;
+  if (lenCm < 26.5) return 41;
+  if (lenCm < 27.2) return 42;
+  if (lenCm < 27.9) return 43;
+  if (lenCm < 28.6) return 44;
+  return 45;
+}
+
+// Heurística de calce de calzado en función del largo de pie.
+function shoeFitFromFootLength(lenCm: number): {
+  label: string;
+  statusKey: "Perfecto" | "Ajustado" | "Holgado";
+} {
+  if (!Number.isFinite(lenCm) || lenCm <= 0) {
+    return { label: "Sin datos", statusKey: "Holgado" };
+  }
+
+  const eu = mapFootToEuSize(lenCm);
+
+  let statusKey: "Perfecto" | "Ajustado" | "Holgado";
+  if (lenCm < 23) {
+    statusKey = "Ajustado";
+  } else if (lenCm > 27.5) {
+    statusKey = "Holgado";
+  } else {
+    statusKey = "Perfecto";
+  }
+
+  const statusText =
+    statusKey === "Perfecto"
+      ? "Perfecto"
+      : statusKey === "Ajustado"
+      ? "Corto"
+      : "Largo";
+
+  if (!eu) {
+    return { label: statusText, statusKey };
+  }
+
+  return {
+    label: `${eu} (${statusText})`,
+    statusKey,
+  };
+}
 
 const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
   if (!fit && viewMode !== "shoes") return null;
@@ -116,12 +167,10 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
     return null;
   }
 
-  const pie = (fit?.lengths ?? []).find((l) => l.zone === "pieLargo");
-  const pieStatus = (pie?.status ?? "Perfecto") as any;
-  const statusKey = pieStatus === "Corto" ? "Ajustado" : pieStatus === "Largo" ? "Holgado" : "Perfecto";
-  const shoeFit = { label: statusKey, statusKey };
+  const shoeFit = shoeFitFromFootLength(footLength);
   const shoeColor = zoneColor(shoeFit.statusKey);
-return (
+
+  return (
     <div
       style={{
         position: "absolute",
@@ -282,7 +331,6 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
   const [user, setUser] = useState<Measurements>(perfilInicial ?? defaultPerfil);
   const [avatarUrl, setAvatarUrl] = useState<string>("");
   const [showCreatorHelp, setShowCreatorHelp] = useState<boolean>(true);
-  const [showZoneDetails, setShowZoneDetails] = useState<boolean>(false);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
@@ -493,407 +541,392 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
       ? "El talle se ve bien, pero el largo podría no ser ideal. Revisá la alerta de largo antes de decidir tu compra."
       : "Revisá las zonas clave del calce antes de decidir tu talle final.";
 
-  const computeRecommendedSizeLabel = (selectedLabel: string, tag: string): string => {
-    if (tag !== "SIZE_UP" && tag !== "SIZE_DOWN") return selectedLabel;
-    const dir = tag === "SIZE_UP" ? 1 : -1;
-
-    // Numeric sizes (shoes, some pants)
-    const n = Number(String(selectedLabel).replace(/[^0-9.-]/g, ""));
-    if (!Number.isNaN(n) && String(n) !== "") {
-      return String(n + dir);
-    }
-
-    // Alpha sizes (XS..4XL)
-    const order = ["XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL"];
-    const up = selectedLabel.trim().toUpperCase();
-    const idx = order.indexOf(up);
-    if (idx >= 0) {
-      const next = Math.max(0, Math.min(order.length - 1, idx + dir));
-      return order[next];
-    }
-
-    // Fallback: show relative suggestion
-    return dir === 1 ? "un talle más" : "un talle menos";
-  };
-
-  const keyZonesLabel = (() => {
-    if ((categoria as any) === "shoes") return "Zona clave: Largo del pie";
-    if ((categoria as any) === "pants" || (categoria as any) === "pantalon") return "Zona clave: Cintura";
-    return "Zonas clave: Pecho y hombros";
-  })();
-return (
-  <div
-    style={{
-      width: "100%",
-      maxWidth: 1100,
-      margin: "0 auto",
-      borderRadius: 18,
-      border: "1px solid #e5e7eb",
-      background: "#ffffff",
-      boxShadow: "0 12px 30px rgba(15,23,42,0.12)",
-      fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
-      overflow: "hidden",
-      height: "85vh",
-      display: "flex",
-      flexDirection: "column",
-    }}
-  >
-    {/* Header tipo guía de talles */}
+  return (
     <div
       style={{
-        padding: "14px 16px",
-        borderBottom: "1px solid #eef2f7",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: 12,
-      }}
-    >
-      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: 0.2 }}>
-          Guía de talles · Recomendación personalizada
-        </div>
-        <div style={{ fontSize: 12, color: "#64748b" }}>{keyZonesLabel}</div>
-      </div>
-
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <span
-          style={{
-            padding: "6px 10px",
-            borderRadius: 999,
-            border: "1px solid #e5e7eb",
-            background: "#f8fafc",
-            fontSize: 12,
-            color: "#0f172a",
-          }}
-        >
-          Producto: <b>{prenda?.titulo ?? "—"}</b>
-        </span>
-      </div>
-    </div>
-
-    {/* Body 2 columnas */}
-    <div
-      style={{
-        flex: 1,
-        display: "grid",
-        gridTemplateColumns: "1.05fr 0.95fr",
-        gap: 14,
+        width: "100%",
+        maxWidth: 420,
+        margin: "0 auto",
+        borderRadius: 16,
         padding: 16,
-        overflow: "hidden",
-      }}
-    >
-      {/* Columna izquierda: recomendación */}
-      <div style={{ overflow: "auto", paddingRight: 4 }}>
-        <div
-          style={{
-            border: "1px solid #e5e7eb",
-            borderRadius: 16,
-            padding: 16,
-            background: "#ffffff",
-          }}
-        >
-          <div style={{ fontSize: 12, color: "#64748b", marginBottom: 6 }}>
-            Tu talle ideal
-          </div>
-
-          <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
-            <div style={{ fontSize: 44, fontWeight: 900, lineHeight: 1, letterSpacing: -0.5 }}>
-              {computeRecommendedSizeLabel(prenda?.sizeLabel ?? "—", rec?.tag ?? "OK")}
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <div style={{ fontSize: 12, color: "#334155" }}>
-                <b>Seleccionaste:</b> {prenda?.sizeLabel ?? "—"}
-              </div>
-              <div style={{ fontSize: 12, color: "#334155" }}>
-                <b>Te recomendamos:</b>{" "}
-                {computeRecommendedSizeLabel(prenda?.sizeLabel ?? "—", rec?.tag ?? "OK")}
-              </div>
-
-              <div
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  padding: "6px 10px",
-                  borderRadius: 999,
-                  border: "1px solid #e5e7eb",
-                  background: "#f8fafc",
-                  width: "fit-content",
-                }}
-              >
-                <span
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 999,
-                    background:
-                      fit.overall === "Perfecto"
-                        ? "#22c55e"
-                        : fit.overall === "Ajustado"
-                        ? "#ef4444"
-                        : "#f59e0b",
-                  }}
-                />
-                <span style={{ fontSize: 12, color: "#0f172a" }}>
-                  Calce: <b>{fit.overall}</b>
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Resumen corto */}
-          <div style={{ marginTop: 12, fontSize: 13, color: "#334155", lineHeight: 1.5 }}>
-            {rec?.tag === "OK"
-              ? "Excelente. Este talle se adapta muy bien a vos para este producto."
-              : rec?.tag === "SIZE_UP"
-              ? "Se ve algo ajustado en la zona clave. Si querés comodidad, probá un talle más."
-              : rec?.tag === "SIZE_DOWN"
-              ? "Se ve algo holgado en la zona clave. Si te gusta al cuerpo, compará con un talle menos."
-              : "Revisá el calce en el avatar y elegí según tu preferencia."}
-          </div>
-
-          {/* Detalle por zonas (opcional) */}
-          <button
-            type="button"
-            onClick={() => setShowZoneDetails((v) => !v)}
-            style={{
-              marginTop: 12,
-              borderRadius: 12,
-              padding: "10px 12px",
-              border: "1px solid #e5e7eb",
-              background: "#ffffff",
-              cursor: "pointer",
-              fontSize: 12,
-              color: "#0f172a",
-            }}
-          >
-            {showZoneDetails ? "Ocultar detalle por zonas" : "Ver detalle por zonas"}
-          </button>
-
-          {showZoneDetails && (
-            <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {Object.entries(fit?.lengths ?? {}).map(([k, v]) => (
-                <span
-                  key={k}
-                  style={{
-                    padding: "6px 10px",
-                    borderRadius: 999,
-                    border: "1px solid #e5e7eb",
-                    background: "#f8fafc",
-                    fontSize: 12,
-                    color: "#0f172a",
-                  }}
-                >
-                  {k}: <b>{v}</b>
-                </span>
-              ))}
-              {Object.entries(fit?.zones ?? {}).map(([k, v]) => (
-                <span
-                  key={k}
-                  style={{
-                    padding: "6px 10px",
-                    borderRadius: 999,
-                    border: "1px solid #e5e7eb",
-                    background: "#f8fafc",
-                    fontSize: 12,
-                    color: "#0f172a",
-                  }}
-                >
-                  {k}: <b>{v}</b>
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Recomendación extendida (usa tu componente existente) */}
-        <div style={{ marginTop: 10 }}>
-          <RecommendationCard tag={rec?.tag ?? "OK"} sizeLabel={prenda?.sizeLabel ?? "—"} />
-        </div>
-
-        <div style={{ marginTop: 10, fontSize: 11.5, color: "#64748b", lineHeight: 1.5 }}>
-          Vesti AI es una herramienta de recomendación. El calce final puede variar según marca y preferencias personales.
-        </div>
-      </div>
-
-      {/* Columna derecha: avatar + overlays */}
-      <div
-        style={{
-          border: "1px solid #e5e7eb",
-          borderRadius: 16,
-          background: "#ffffff",
-          overflow: "hidden",
-          display: "flex",
-          flexDirection: "column",
-          minHeight: 360,
-        }}
-      >
-        <div style={{ padding: 12, borderBottom: "1px solid #eef2f7" }}>
-          <div style={{ fontSize: 12, color: "#64748b" }}>Vista previa</div>
-        </div>
-
-        <div style={{ flex: 1, position: "relative" }}>
-          {avatarUrl ? (
-            <>
-              <AvatarViewer avatarUrl={avatarUrl} />
-              <FitOverlay fit={fit} viewMode={viewMode} />
-            </>
-          ) : (
-            <div
-              style={{
-                height: "100%",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "#64748b",
-                fontSize: 12,
-                padding: 14,
-                textAlign: "center",
-              }}
-            >
-              Pegá una URL de avatar (ReadyPlayerMe .glb) para ver el calce visual.
-            </div>
-          )}
-
-          {/* Chip de estado sobre el avatar */}
-          <div
-            style={{
-              position: "absolute",
-              left: "50%",
-              transform: "translateX(-50%)",
-              bottom: 12,
-              padding: "8px 12px",
-              borderRadius: 999,
-              background: "#ffffff",
-              border: "1px solid #e5e7eb",
-              boxShadow: "0 10px 22px rgba(15,23,42,0.15)",
-              fontSize: 12,
-              color: "#0f172a",
-            }}
-          >
-            Calce {((categoria as any) === "shoes") ? "calzado" : "estimado"}: <b>{fit.overall}</b>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    {/* Footer compacto: inputs */}
-    <div
-      style={{
-        padding: 14,
-        borderTop: "1px solid #eef2f7",
-        background: "#fbfdff",
+        border: "1px solid #e5e7eb",
+        background: "#ffffff",
         display: "flex",
         flexDirection: "column",
-        gap: 10,
+        gap: 12,
+        fontFamily:
+          "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
       }}
     >
-      <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr 1fr 1fr", gap: 10 }}>
-        <Field
-          label="URL avatar ReadyPlayerMe (.glb)"
-          value={avatarUrl}
-          onChange={(v) => setAvatarUrl(v)}
-          placeholder="https://models.readyplayer.me/..."
-        />
-
-        {((categoria as any) === "shoes") && (
-          <Field
-            label="Largo pie (cm)"
-            value={String(user.pieLargo ?? "")}
-            onChange={(v) => handleChange("pieLargo", v)}
-            type="number"
-            step="0.1"
-            placeholder="Ej: 26.7"
-          />
-        )}
-
-        {((categoria as any) === "pants" || (categoria as any) === "pantalon") && (
-          <Field
-            label="Cintura (cm)"
-            value={String(user.cintura ?? "")}
-            onChange={(v) => handleChange("cintura", v)}
-            type="number"
-            step="0.1"
-            placeholder="Ej: 86"
-          />
-        )}
-
-        {((categoria as any) !== "pants" && (categoria as any) !== "pantalon" && (categoria as any) !== "shoes") && (
-          <Field
-            label="Pecho (cm)"
-            value={String(user.pecho ?? "")}
-            onChange={(v) => handleChange("pecho", v)}
-            type="number"
-            step="0.1"
-            placeholder="Ej: 98"
-          />
-        )}
-      </div>
-
-      {/* Selfie como upgrade */}
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-        <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.4 }}>
-          ¿Querés una recomendación aún más precisa? Creá tu avatar con una selfie (modo avanzado).
-        </div>
-
-        <button
-          type="button"
-          onClick={() => setShowCreatorHelp(true)}
+      {/* Paso a paso arriba */}
+      <div
+        style={{
+          display: "flex",
+          gap: 4,
+          marginBottom: 4,
+          fontSize: 12,
+        }}
+      >
+        <span
           style={{
-            borderRadius: 12,
-            padding: "10px 12px",
+            padding: "4px 8px",
+            borderRadius: 999,
             border: "1px solid #e5e7eb",
-            background: "#ffffff",
-            cursor: "pointer",
-            fontSize: 12,
-            color: "#0f172a",
-            fontWeight: 700,
+            background: creandoAvatar ? "#eef2ff" : "#f9fafb",
           }}
         >
-          Usar selfie (opcional)
-        </button>
-      </div>
-
-      {showCreatorHelp && (
-        <div
+          1 · Creá tu avatar (subí una selfie)
+        </span>
+        <span
           style={{
-            marginTop: 6,
-            padding: 12,
-            borderRadius: 14,
+            padding: "4px 8px",
+            borderRadius: 999,
             border: "1px solid #e5e7eb",
-            background: "#ffffff",
-            fontSize: 12,
-            color: "#334155",
-            lineHeight: 1.5,
+            background: !creandoAvatar ? "#ecfdf3" : "#f9fafb",
           }}
         >
-          <b>Modo selfie (opcional):</b> podés integrar un flujo de creación automática de avatar para acelerar la personalización.
-          Por ahora, pegá una URL de ReadyPlayerMe para ver el avatar.
-          <div style={{ marginTop: 8 }}>
+          2 · Visualizá el calce recomendado
+        </span>
+      </div>
+
+      {/* Selector de tipo de prenda (solo UI del widget/demo) */}
+      <div
+        style={{
+          display: "flex",
+          gap: 6,
+          marginBottom: 4,
+          fontSize: 11,
+        }}
+      >
+        {([
+          ["top", "Superiores"],
+          ["bottom", "Jeans / Pantalón"],
+          ["shoes", "Zapatillas"],
+        ] as [ViewMode, string][]).map(([mode, label]) => {
+          const active = viewMode === mode;
+          return (
             <button
+              key={mode}
               type="button"
-              onClick={() => setShowCreatorHelp(false)}
+              onClick={() => setViewMode(mode)}
               style={{
-                borderRadius: 10,
-                padding: "8px 10px",
+                flex: 1,
+                padding: "4px 6px",
+                borderRadius: 999,
                 border: "1px solid #e5e7eb",
-                background: "#f8fafc",
+                background: active ? "#e0f2fe" : "#f9fafb",
+                fontSize: 11,
                 cursor: "pointer",
-                fontSize: 12,
-                color: "#0f172a",
-                fontWeight: 700,
+                fontWeight: active ? 600 : 500,
               }}
             >
-              Entendido
+              {label}
             </button>
+          );
+        })}
+      </div>
+
+      {/* Panel principal 3D / Creador embebido */}
+      <div
+        style={{
+          width: "100%",
+          aspectRatio: "9 / 16",
+          borderRadius: 16,
+          overflow: "hidden",
+          background: "#f9fafb",
+          marginBottom: 8,
+          position: "relative",
+        }}
+      >
+        {avatarUrl ? (
+          <>
+            <AvatarViewer avatarUrl={avatarUrl} />
+            <FitOverlay fit={fit} viewMode={viewMode} footLength={footLength} />
+          </>
+        ) : (
+          <>
+            <iframe
+              ref={iframeRef}
+              title="Creador de avatar ReadyPlayerMe"
+              src="https://readyplayer.me/avatar?frameApi"
+              style={{
+                width: "100%",
+                height: "100%",
+                border: "none",
+              }}
+              allow="camera *; microphone *; clipboard-write"
+            />
+            {showCreatorHelp && (
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  background: "rgba(15,23,42,0.65)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: 16,
+                  zIndex: 10,
+                }}
+              >
+                <div
+                  style={{
+                    background: "#f9fafb",
+                    borderRadius: 16,
+                    padding: "12px 14px",
+                    maxWidth: "90%",
+                    fontSize: 12,
+                    color: "#0f172a",
+                    boxShadow: "0 10px 25px rgba(15,23,42,0.35)",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontWeight: 600,
+                      marginBottom: 6,
+                      fontSize: 13,
+                    }}
+                  >
+                    Cómo crear tu avatar en 3 pasos
+                  </div>
+                  <ol
+                    style={{
+                      margin: 0,
+                      paddingLeft: 18,
+                      marginBottom: 8,
+                    }}
+                  >
+                    <li>
+                      Tocá el{" "}
+                      <strong>icono de la persona con pincel</strong> en la barra
+                      inferior.
+                    </li>
+                    <li>
+                      Luego tocá el <strong>icono de cámara</strong>.
+                    </li>
+                    <li>
+                      Elegí si querés tomarte una foto o subir una selfie. Cuando
+                      termine, tu avatar se va a mostrar automáticamente acá.
+                    </li>
+                  </ol>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowCreatorHelp(false);
+                    }}
+                    style={{
+                      marginTop: 4,
+                      borderRadius: 999,
+                      border: "none",
+                      padding: "6px 10px",
+                      fontSize: 12,
+                      background: "#4f46e5",
+                      color: "#f9fafb",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Entendido, quiero crear mi avatar
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Campo opcional para pegar o editar la URL manualmente */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <span style={{ fontSize: 11, color: "#6b7280" }}>
+          URL avatar ReadyPlayerMe (.glb)
+        </span>
+        <input
+          type="text"
+          placeholder="Pegá o ajustá la URL .glb de tu avatar"
+          value={avatarUrl}
+          onChange={(e) => setAvatarUrl(e.target.value)}
+          style={{
+            borderRadius: 8,
+            border: "1px solid #e5e7eb",
+            padding: "6px 8px",
+            fontSize: 12,
+          }}
+        />
+      </div>
+
+      {/* Medidas rápidas */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: viewMode === "shoes" ? "1fr" : "1fr 1fr",
+          gap: 8,
+          fontSize: 12,
+        }}
+      >
+        {viewMode === "top" && (
+          <>
+            <Field label="Hombros (cm)" value={user.hombros} onChange={handleChange("hombros")} />
+            <Field label="Pecho (cm)" value={user.pecho} onChange={handleChange("pecho")} />
+            <Field label="Cintura (cm)" value={user.cintura} onChange={handleChange("cintura")} />
+            <Field label="Largo torso (cm)" value={user.largoTorso} onChange={handleChange("largoTorso")} />
+          </>
+        )}
+
+        {viewMode === "bottom" && (
+          <>
+            <Field label="Cintura (cm)" value={user.cintura} onChange={handleChange("cintura")} />
+            <Field label="Largo pierna (cm)" value={user.largoPierna} onChange={handleChange("largoPierna")} />
+          </>
+        )}
+
+        {viewMode === "shoes" && (
+          <Field label="Largo pie (cm)" value={footLength} onChange={handleFootChange} />
+        )}
+      </div>
+
+      {/* Tarjeta de recomendación */}
+      {viewMode === "shoes" ? (
+        (() => {
+          const shoe = shoeFitFromFootLength(footLength);
+          const euSize = mapFootToEuSize(footLength);
+          const bg =
+            shoe.statusKey === "Perfecto"
+              ? "#ecfdf3"
+              : shoe.statusKey === "Ajustado"
+              ? "#fef2f2"
+              : "#fffbeb";
+          const border =
+            shoe.statusKey === "Perfecto"
+              ? "1px solid #bbf7d0"
+              : shoe.statusKey === "Ajustado"
+              ? "1px solid #fecACA"
+              : "1px solid #fef3c7";
+
+          return (
+            <div
+              style={{
+                marginTop: 4,
+                padding: 12,
+                borderRadius: 12,
+                background: bg,
+                border,
+              }}
+            >
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+                Calzado recomendado · Talle {euSize ?? "—"}
+              </div>
+              <div style={{ fontSize: 12, color: "#4b5563" }}>
+                {shoe.statusKey === "Perfecto"
+                  ? "Este talle es ideal para tu largo de pie. Si preferís un calce más holgado, podés probar medio número más."
+                  : shoe.statusKey === "Ajustado"
+                  ? "Este talle puede quedarte algo justo de largo. Si te gusta el calce relajado, te conviene un número más."
+                  : "Este talle puede quedarte algo largo. Si querés un calce más ajustado, probá un número menos."}
+              </div>
+            </div>
+          );
+        })()
+      ) : (
+        <div
+          style={{
+            marginTop: 4,
+            padding: 12,
+            borderRadius: 12,
+            background: recBg,
+            border: recBorder,
+          }}
+        >
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+            {recTitle}
           </div>
+          <div style={{ fontSize: 12, color: "#4b5563" }}>{recBody}</div>
         </div>
       )}
+
+      {/* Vista rápida por zonas */}
+      <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+        {(() => {
+          const allWidths = fit?.widths ?? [];
+          const allLengths = fit?.lengths ?? [];
+
+          let widthBadges = allWidths;
+          let lengthBadges = allLengths;
+
+          if (viewMode === "top") {
+            widthBadges = allWidths.filter((z) =>
+              ["hombros", "pecho", "cintura"].includes(z.zone)
+            );
+            lengthBadges = allLengths.filter((lz) => lz.zone === "largoTorso");
+          } else if (viewMode === "bottom") {
+            widthBadges = allWidths.filter((z) =>
+              ["cintura", "cadera"].includes(z.zone)
+            );
+            const leg = allLengths.find((lz) => lz.zone === "largoPierna");
+            if (leg) {
+              lengthBadges = [leg];
+            } else if (allLengths.length) {
+              const base = allLengths[0];
+              lengthBadges = [{ ...base, zone: "largoPierna" } as typeof base];
+            } else {
+              lengthBadges = [];
+            }
+          } else if (viewMode === "shoes") {
+            widthBadges = [];
+            lengthBadges = [];
+          }
+
+          return (
+            <>
+              {widthBadges.map((z) => (
+                <span
+                  key={z.zone}
+                  style={{
+                    fontSize: 11,
+                    padding: "4px 8px",
+                    borderRadius: 999,
+                    backgroundColor: "#f9fafb",
+                    border: `1px solid ${z.color}`,
+                  }}
+                >
+                  {z.zone}: {z.status}
+                </span>
+              ))}
+              {lengthBadges.map((lz) => (
+                <span
+                  key={lz.zone}
+                  style={{
+                    fontSize: 11,
+                    padding: "4px 8px",
+                    borderRadius: 999,
+                    backgroundColor: "#f9fafb",
+                    border: "1px solid #e5e7eb",
+                  }}
+                >
+                  {lz.zone === "largoTorso"
+                    ? "largo torso"
+                    : lz.zone === "largoPierna"
+                    ? "largo pierna"
+                    : lz.zone}
+                  : {lz.status}
+                </span>
+              ))}
+              {viewMode === "shoes" && (
+                <span
+                  style={{
+                    fontSize: 11,
+                    padding: "4px 8px",
+                    borderRadius: 999,
+                    backgroundColor: "#f9fafb",
+                    border: "1px solid #e5e7eb",
+                  }}
+                >
+                  largo pie: {shoeFitFromFootLength(footLength).label}
+                </span>
+              )}
+            </>
+          );
+        })()}
+      </div>
     </div>
-  </div>
-);
   );
 };
 
