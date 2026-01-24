@@ -1,10 +1,8 @@
-// VestiEmbedWidget.tsx
-// Layout "Guía de talles" (ancho, 2 columnas) usando el widget existente como base.
-// - NO toca el motor.
-// - Mantiene ReadyPlayerMe + Avatar + Overlays.
-// - Respeta Upper / Pants / Shoes (solo UI/estructura).
-
-import React, { useEffect, useMemo, useRef, useState } from "react";
+// IMPORTANTE: Integrar theme.ts
+// import { vestiTheme } from "../theme";
+// -------------------------------
+// Agregar wrappers de estilo Shopify Premium aquí
+import React, { useMemo, useState, useRef, useEffect } from "react";
 import {
   Garment,
   GarmentCategory,
@@ -34,7 +32,6 @@ const defaultPerfil: Measurements = {
   cintura: 82,
   largoTorso: 52,
   largoPierna: 102,
-  pieLargo: 26,
 };
 
 // -------------------- Helpers de color y layout --------------------
@@ -54,14 +51,15 @@ function zoneColor(status: string): string {
 
 // Mapeo de zona -> posición vertical (porcentaje sobre alto del visor)
 const widthTopPercent: Record<string, string> = {
-  hombros: "33%",
+  hombros: "33%", // un poco más abajo
   pecho: "44%",
   cintura: "58%",
-  cadera: "62%",
 };
 
 const lengthBarLayout: Record<string, { top: string; bottom: string }> = {
+  // Barra desde hombro aprox hasta cintura aprox
   largoTorso: { top: "32%", bottom: "42%" },
+  // Barra de pierna: desde cadera / muslo alto hasta tobillo
   largoPierna: { top: "58%", bottom: "10%" },
 };
 
@@ -70,16 +68,76 @@ type ViewMode = "top" | "bottom" | "shoes";
 type OverlayProps = {
   fit: FitResult;
   viewMode: ViewMode;
+  footLength: number;
 };
 
-const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode }) => {
+// Mapear largo de pie en cm -> talle EU aproximado (36–45)
+function mapFootToEuSize(lenCm: number): number | null {
+  if (!Number.isFinite(lenCm) || lenCm <= 0) return null;
+
+  // Rango orientativo, luego se puede ajustar por marca
+  if (lenCm < 23.0) return 36;
+  if (lenCm < 23.7) return 37;
+  if (lenCm < 24.4) return 38;
+  if (lenCm < 25.1) return 39;
+  if (lenCm < 25.8) return 40;
+  if (lenCm < 26.5) return 41;
+  if (lenCm < 27.2) return 42;
+  if (lenCm < 27.9) return 43;
+  if (lenCm < 28.6) return 44;
+  return 45;
+}
+
+// Heurística de calce de calzado en función del largo de pie.
+function shoeFitFromFootLength(lenCm: number): {
+  label: string;
+  statusKey: "Perfecto" | "Ajustado" | "Holgado";
+} {
+  if (!Number.isFinite(lenCm) || lenCm <= 0) {
+    return { label: "Sin datos", statusKey: "Holgado" };
+  }
+
+  const eu = mapFootToEuSize(lenCm);
+
+  let statusKey: "Perfecto" | "Ajustado" | "Holgado";
+  if (lenCm < 23) {
+    statusKey = "Ajustado";
+  } else if (lenCm > 27.5) {
+    statusKey = "Holgado";
+  } else {
+    statusKey = "Perfecto";
+  }
+
+  const statusText =
+    statusKey === "Perfecto"
+      ? "Perfecto"
+      : statusKey === "Ajustado"
+      ? "Corto"
+      : "Largo";
+
+  if (!eu) {
+    return { label: statusText, statusKey };
+  }
+
+  return {
+    label: `${eu} (${statusText})`,
+    statusKey,
+  };
+}
+
+const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
+  if (!fit && viewMode !== "shoes") return null;
+
   const isTopView = viewMode === "top";
   const isBottomView = viewMode === "bottom";
   const isShoesView = viewMode === "shoes";
 
   const widthZones = (fit?.widths ?? []).filter((z) => {
     if (isShoesView) return false;
-    if (isBottomView) return z.zone === "cintura" || z.zone === "cadera";
+    if (isBottomView) {
+      return z.zone === "cintura" || z.zone === "cadera";
+    }
+    // Vista superior
     return z.zone === "hombros" || z.zone === "pecho" || z.zone === "cintura";
   });
 
@@ -90,28 +148,37 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode }) => {
     lengthZones = [];
   } else if (isBottomView) {
     const leg = rawLengths.find((lz) => lz.zone === "largoPierna");
-    if (leg) lengthZones = [leg];
+    if (leg) {
+      lengthZones = [leg];
+    } else if (rawLengths.length) {
+      const base = rawLengths[0];
+      lengthZones = [{ ...base, zone: "largoPierna" } as typeof base];
+    }
   } else {
     const torso = rawLengths.find((lz) => lz.zone === "largoTorso");
-    if (torso) lengthZones = [torso];
+    if (torso) {
+      lengthZones = [torso];
+    }
   }
-
-  const pie = (fit?.lengths ?? []).find((l) => l.zone === "pieLargo");
-  const pieStatus = (pie?.status ?? "Perfecto") as any;
-  const statusKey =
-    pieStatus === "Corto"
-      ? "Ajustado"
-      : pieStatus === "Largo"
-      ? "Holgado"
-      : "Perfecto";
-  const shoeColor = zoneColor(statusKey);
 
   const hasShoeOverlay = isShoesView;
 
-  if (!widthZones.length && !lengthZones.length && !hasShoeOverlay) return null;
+  if (!widthZones.length && !lengthZones.length && !hasShoeOverlay) {
+    return null;
+  }
+
+  const shoeFit = shoeFitFromFootLength(footLength);
+  const shoeColor = zoneColor(shoeFit.statusKey);
 
   return (
-    <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        pointerEvents: "none",
+        display: "block",
+      }}
+    >
       {/* Bandas horizontales de ancho */}
       {widthZones.map((z) => {
         const top = widthTopPercent[z.zone] ?? "45%";
@@ -144,14 +211,21 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode }) => {
         );
       })}
 
-      {/* Indicadores verticales de largo */}
+      {/* Indicadores verticales de largo (torso / pierna) */}
       {lengthZones.map((lz) => {
         const layout = lengthBarLayout[lz.zone];
         if (!layout) return null;
         const color = zoneColor(lz.status);
         const shortLabel = lz.zone === "largoTorso" ? "Torso" : "Pierna";
-        const chipTop =
-          lz.zone === "largoTorso" ? "24%" : lz.zone === "largoPierna" ? "76%" : `calc(${layout.top} - 3%)`;
+
+        let chipTop: string;
+        if (lz.zone === "largoTorso") {
+          chipTop = "24%";
+        } else if (lz.zone === "largoPierna") {
+          chipTop = "76%";
+        } else {
+          chipTop = `calc(${layout.top} - 3%)`;
+        }
 
         return (
           <React.Fragment key={lz.zone}>
@@ -238,7 +312,7 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode }) => {
             }}
           >
             <span style={{ fontWeight: 600 }}>Calce calzado:</span>
-            <span>{statusKey}</span>
+            <span>{shoeFit.label}</span>
           </div>
         </>
       )}
@@ -257,19 +331,22 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
   const [user, setUser] = useState<Measurements>(perfilInicial ?? defaultPerfil);
   const [avatarUrl, setAvatarUrl] = useState<string>("");
   const [showCreatorHelp, setShowCreatorHelp] = useState<boolean>(true);
+  const [showMedidas, setShowMedidas] = useState<boolean>(false);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
-
-  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+  // En producción, la categoría siempre viene del producto (Shopify).
+  // Así que NO usamos selector de categoría. Solo derivamos el modo de vista.
+  const viewMode: ViewMode = (() => {
     const cat: any = categoria;
     if (cat === "pantalon" || cat === "pants") return "bottom";
     if (cat === "calzado" || cat === "zapatilla" || cat === "shoes") return "shoes";
     return "top";
-  });
+  })();
 
   const lastPayloadRef = useRef<string | null>(null);
+  const [footLength, setFootLength] = useState<number>(26);
 
-  // Fit + recomendación (motor)
   const fit = useMemo(() => computeFit(user, prenda), [user, prenda]);
+
   const rec = useMemo(
     () =>
       makeRecommendation({
@@ -280,7 +357,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
     [categoria, prenda, fit]
   );
 
-  // ReadyPlayerMe: escuchar avatar exportado
+  // Suscribirse a eventos de ReadyPlayerMe
   useEffect(() => {
     const listener = (event: MessageEvent) => {
       if (!event.data) return;
@@ -309,7 +386,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
     return () => window.removeEventListener("message", listener);
   }, []);
 
-  // Suscripción al iframe cuando carga
+  // Enviar mensaje de suscripción al iframe cuando carga
   useEffect(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
@@ -327,6 +404,44 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
 
     iframe.addEventListener("load", handleLoad);
     return () => iframe.removeEventListener("load", handleLoad);
+  }, [iframeRef]);
+
+  // Auto-ajuste de alto cuando se usa dentro de un iframe embebido
+  useEffect(() => {
+    if (window.self === window.top) return;
+
+    const sendHeight = () => {
+      try {
+        const doc = document;
+        const height =
+          doc.documentElement.scrollHeight || doc.body.scrollHeight || 0;
+
+        window.parent.postMessage({ type: "vesti:resize", height }, "*");
+      } catch {
+        // ignorar
+      }
+    };
+
+    sendHeight();
+
+    const ResizeObs: any = (window as any).ResizeObserver;
+    if (ResizeObs) {
+      const observer = new ResizeObs(() => sendHeight());
+      observer.observe(document.body);
+      window.addEventListener("load", sendHeight);
+
+      return () => {
+        observer.disconnect();
+        window.removeEventListener("load", sendHeight);
+      };
+    } else {
+      window.addEventListener("resize", sendHeight);
+      window.addEventListener("load", sendHeight);
+      return () => {
+        window.removeEventListener("resize", sendHeight);
+        window.removeEventListener("load", sendHeight);
+      };
+    }
   }, []);
 
   // Notificar hacia afuera (tienda) cuando cambia algo relevante
@@ -351,14 +466,24 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
   const handleChange =
     (field: keyof Measurements) =>
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const raw = String(e.target.value).replace(",", ".");
-      const val = Number(raw);
-      setUser((prev) => ({ ...prev, [field]: Number.isFinite(val) ? val : (prev as any)[field] }));
+      const val = Number(String(e.target.value).replace(",", "."));
+      setUser((prev) => ({ ...prev, [field]: isNaN(val) ? 0 : val }));
     };
+
+  const handleFootChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = Number(String(e.target.value).replace(",", "."));
+    setFootLength(isNaN(val) ? 0 : val);
+  };
 
   const creandoAvatar = !avatarUrl;
 
-  // ---- UI status (no toca motor) ----
+  /* =========================================================
+     REGLA PREMIUM DE ESTADO GLOBAL (SOLO UI, NO TOCA MOTOR)
+     - Verde: OK y largo relevante Perfecto
+     - Amarillo: CHECK_LENGTH o OK + largo no Perfecto
+     - Rojo: SIZE_UP o SIZE_DOWN
+  ========================================================= */
+
   const isOk = rec.tag === "OK";
   const isSizeUp = rec.tag === "SIZE_UP";
   const isSizeDown = rec.tag === "SIZE_DOWN";
@@ -371,13 +496,22 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
       ? (fit?.lengths ?? []).filter((lz) => lz.zone === "largoTorso")
       : [];
 
-  const hasLengthAlert = relevantLengths.some((lz) => (lz?.status ?? "") !== "Perfecto");
+  const hasLengthAlert = relevantLengths.some(
+    (lz) => (lz?.status ?? "") !== "Perfecto"
+  );
 
   const shouldWarn = isCheckLength || (isOk && hasLengthAlert);
   const isError = isSizeUp || isSizeDown;
 
   const recBg =
-    isOk && !shouldWarn ? "#ecfdf3" : isError ? "#fef2f2" : shouldWarn ? "#fffbeb" : "#eff6ff";
+    isOk && !shouldWarn
+      ? "#ecfdf3"
+      : isError
+      ? "#fef2f2"
+      : shouldWarn
+      ? "#fffbeb"
+      : "#eff6ff";
+
   const recBorder =
     isOk && !shouldWarn
       ? "1px solid #bbf7d0"
@@ -386,178 +520,406 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
       : shouldWarn
       ? "1px solid #fef3c7"
       : "1px solid #bfdbfe";
+  // -------------------- Copys "guía de talles" (solo UI) --------------------
+  const recSizeLabel =
+    (rec as any)?.sizeLabel ||
+    (rec as any)?.recommendedSize ||
+    (rec as any)?.size ||
+    "";
 
-  // Copy de tarjeta principal (izquierda)
-  const mainTitle =
+  // Título corto según tag
+  const recTitle =
+    rec.tag === "OK"
+      ? "Calce estimado"
+      : rec.tag === "SIZE_UP"
+      ? "Te conviene subir un talle"
+      : rec.tag === "SIZE_DOWN"
+      ? "Te conviene bajar un talle"
+      : "Revisá el calce";
+
+  // Punto de color para el badge
+  const recDot =
+    isOk && !shouldWarn ? "#16a34a" : isError ? "#ef4444" : "#eab308";
+
+  // Mensaje principal (corto, sin humo)
+  const recBody = (() => {
+    if (viewMode === "shoes") {
+      if (rec.tag === "OK") return "Con el talle seleccionado, el calzado se ve bien de largo.";
+      if (rec.tag === "SIZE_UP") return "Se ve justo de largo. Para estar cómodo, conviene subir un número.";
+      if (rec.tag === "SIZE_DOWN") return "Se ve holgado de largo. Si lo preferís más justo, probá bajar un número.";
+      return "Revisá el calce de largo antes de comprar.";
+    }
+
+    if (viewMode === "bottom") {
+      if (rec.tag === "OK") return "Con el talle seleccionado, la cintura se ve bien.";
+      if (rec.tag === "SIZE_UP") return "La cintura se ve ajustada. Te conviene subir un talle.";
+      if (rec.tag === "SIZE_DOWN") return "La cintura se ve holgada. Si lo preferís más al cuerpo, bajá un talle.";
+      return "Revisá la cintura y el largo de pierna antes de comprar.";
+    }
+
+    // top
+    if (rec.tag === "OK") return "Con el talle seleccionado, el calce se ve bien en las zonas clave.";
+    if (rec.tag === "SIZE_UP") return "Vemos alguna zona al límite o ajustada. Te conviene subir un talle para estar cómodo.";
+    if (rec.tag === "SIZE_DOWN") return "Vemos holgura marcada. Si lo preferís más al cuerpo, bajá un talle.";
+    return "Revisá el calce en hombros y pecho antes de comprar.";
+  })();
+
+  // Meta opcional (solo cuando hay warning de largo)
+  const recMeta =
+    shouldWarn && viewMode !== "shoes"
+      ? "Ojo con el largo: puede requerir revisar antes de comprar."
+      : "";
+
+  // Chips simples (zonas clave + informativas)
+  const chips = (() => {
+    const arr: string[] = [];
+    if (viewMode === "shoes") {
+      const z = (fit?.widths ?? []).find((w) => w.zone === "pieLargo");
+      if (z) arr.push(`pie: ${z.status}`);
+      return arr;
+    }
+
+    if (viewMode === "bottom") {
+      const w = (fit?.widths ?? []).find((x) => x.zone === "cintura");
+      if (w) arr.push(`cintura: ${w.status}`);
+      const l = (fit?.lengths ?? []).find((x) => x.zone === "largoPierna");
+      if (l && l.status !== "Perfecto") arr.push(`pierna: ${l.status}`);
+      return arr;
+    }
+
+    // top
+    const hombros = (fit?.widths ?? []).find((x) => x.zone === "hombros");
+    const pecho = (fit?.widths ?? []).find((x) => x.zone === "pecho");
+    const cintura = (fit?.widths ?? []).find((x) => x.zone === "cintura");
+    const torso = (fit?.lengths ?? []).find((x) => x.zone === "largoTorso");
+
+    if (pecho) arr.push(`pecho: ${pecho.status}`);
+    if (hombros) arr.push(`hombros: ${hombros.status}`);
+    if (cintura) arr.push(`cintura: ${cintura.status} (info)`);
+    if (torso && torso.status !== "Perfecto") arr.push(`torso: ${torso.status}`);
+    return arr;
+  })();
+
+  const fieldsToShow = (() => {
+    if (viewMode === "shoes") {
+      return [
+        { key: "pieLargo", label: "Largo pie (cm)", placeholder: "Ej: 26.5" },
+      ];
+    }
+    if (viewMode === "bottom") {
+      return [
+        { key: "cintura", label: "Cintura (cm)", placeholder: "Ej: 84" },
+        { key: "largoPierna", label: "Largo pierna (cm)", placeholder: "Ej: 104" },
+      ];
+    }
+    return [
+      { key: "hombros", label: "Hombros (cm)", placeholder: "Ej: 44" },
+      { key: "pecho", label: "Pecho (cm)", placeholder: "Ej: 100" },
+      { key: "cintura", label: "Cintura (cm)", placeholder: "Ej: 84" },
+      { key: "largoTorso", label: "Largo torso (cm)", placeholder: "Ej: 52" },
+    ];
+  })();
+
+
+  const recTitle =
     isOk && !shouldWarn
-      ? "Tu talle ideal"
+      ? "Calce recomendado · Talle " + prenda.sizeLabel
       : isError
-      ? "Revisá el talle"
+      ? "Revisá el calce · Talle actual " + prenda.sizeLabel
       : shouldWarn
-      ? "Buen talle, ojo con el largo"
-      : "Tu talle recomendado";
+      ? "Ojo con el largo · Talle " + prenda.sizeLabel
+      : "Calce estimado · Talle " + prenda.sizeLabel;
 
-  const mainBody =
+  const recBody =
     isOk && !shouldWarn
-      ? "Este talle se ve bien en general. Abajo podés ajustar tus datos si querés afinar el calce."
+      ? "Este talle se ve bien en general para tus medidas. Revisá las zonas clave para confirmar el calce que preferís."
       : isSizeUp
-      ? "Vemos alguna zona al límite o ajustada. Te conviene subir un talle para estar cómodo."
+      ? "Vemos alguna zona al límite o ajustada. Podés comparar este talle con uno más para quedarte tranquilo antes de comprar."
       : isSizeDown
-      ? "Vemos holgura. Si te gusta más al cuerpo, compará con un talle menos."
+      ? "Vemos algo de holgura en alguna zona. Si preferís un calce más al cuerpo, podés comparar este talle con uno menos."
       : shouldWarn
-      ? "El talle se ve bien, pero el largo podría no ser ideal. Mirá la alerta antes de decidir."
+      ? "El talle se ve bien, pero el largo podría no ser ideal. Revisá la alerta de largo antes de decidir tu compra."
       : "Revisá las zonas clave del calce antes de decidir tu talle final.";
 
-  // Para shoes, mostramos también el status de largo pie como foco
-  const pie = (fit?.lengths ?? []).find((l) => l.zone === "pieLargo");
-  const pieStatus = (pie?.status ?? "Perfecto") as any;
-  const shoeLabel = pieStatus === "Corto" ? "Ajustado" : pieStatus === "Largo" ? "Holgado" : "Perfecto";
-
   return (
-    <div
-      style={{
-        width: "100%",
-        maxWidth: 1120,
-        margin: "0 auto",
-        borderRadius: 18,
-        padding: 18,
-        border: "1px solid #e5e7eb",
-        background: "#ffffff",
-        fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
-      }}
-    >
-      {/* Header */}
-      <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1.15 }}>
-          Guía de talles · Recomendación personalizada
-        </div>
-        <div style={{ marginTop: 4, fontSize: 13, color: "#6b7280" }}>
-          Basado en tus medidas y este producto
+    <div className="vestiSG-root">
+      <style>{`
+        .vestiSG-root{
+          width:100%;
+          max-width:1120px;
+          margin:0 auto;
+          padding:18px;
+          box-sizing:border-box;
+          font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif;
+          color:#0f172a;
+        }
+        .vestiSG-header{
+          display:flex;
+          align-items:flex-start;
+          justify-content:space-between;
+          gap:12px;
+          margin-bottom:14px;
+        }
+        .vestiSG-title{
+          margin:0;
+          font-size:22px;
+          line-height:1.15;
+          font-weight:800;
+          letter-spacing:-0.01em;
+        }
+        .vestiSG-sub{
+          margin:6px 0 0 0;
+          color:#64748b;
+          font-size:13px;
+        }
+
+        .vestiSG-grid{
+          display:grid;
+          grid-template-columns: 1fr 520px;
+          gap:16px;
+          align-items:start;
+        }
+
+        .vestiSG-card{
+          background:#fff;
+          border:1px solid #e5e7eb;
+          border-radius:16px;
+          padding:14px;
+          box-shadow: 0 10px 25px rgba(15,23,42,0.08);
+        }
+
+        .vestiSG-hero{
+          border-radius:16px;
+          border: 1px solid rgba(15,23,42,0.10);
+          padding:14px;
+        }
+
+        .vestiSG-heroTop{
+          display:flex;
+          align-items:center;
+          justify-content:space-between;
+          gap:12px;
+          margin-bottom:8px;
+        }
+        .vestiSG-badge{
+          display:inline-flex;
+          align-items:center;
+          gap:8px;
+          padding:6px 10px;
+          border-radius:999px;
+          font-size:12px;
+          font-weight:700;
+          border:1px solid rgba(15,23,42,0.10);
+          background: rgba(15,23,42,0.03);
+          white-space:nowrap;
+        }
+        .vestiSG-dot{
+          width:9px;
+          height:9px;
+          border-radius:999px;
+          display:inline-block;
+        }
+        .vestiSG-heroMsg{
+          margin:0;
+          color:#0f172a;
+          font-size:13px;
+          line-height:1.35;
+        }
+        .vestiSG-heroMeta{
+          margin:8px 0 0 0;
+          color:#334155;
+          font-size:12px;
+        }
+
+        .vestiSG-accordionBtn{
+          width:100%;
+          display:flex;
+          align-items:center;
+          justify-content:space-between;
+          gap:10px;
+          background:#fff;
+          border:1px solid #e5e7eb;
+          border-radius:14px;
+          padding:12px 12px;
+          cursor:pointer;
+          font-weight:700;
+          font-size:13px;
+          color:#0f172a;
+        }
+        .vestiSG-accordionBody{
+          margin-top:10px;
+          border:1px solid #e5e7eb;
+          border-radius:14px;
+          padding:12px;
+          background:#fff;
+        }
+
+        .vestiSG-formGrid{
+          display:grid;
+          grid-template-columns: 1fr 1fr;
+          gap:10px;
+        }
+
+        .vestiSG-field label{
+          display:block;
+          font-size:11px;
+          color:#64748b;
+          margin:0 0 4px 2px;
+          font-weight:600;
+        }
+        .vestiSG-field input{
+          width:100%;
+          padding:10px 10px;
+          border-radius:12px;
+          border:1px solid #e5e7eb;
+          font-size:14px;
+          outline:none;
+        }
+
+        .vestiSG-chipRow{
+          display:flex;
+          flex-wrap:wrap;
+          gap:8px;
+          margin-top:10px;
+        }
+        .vestiSG-chip{
+          display:inline-flex;
+          align-items:center;
+          gap:6px;
+          padding:6px 10px;
+          border-radius:999px;
+          background:#f8fafc;
+          border:1px solid #e5e7eb;
+          font-size:12px;
+          color:#0f172a;
+          font-weight:600;
+        }
+
+        .vestiSG-rightSticky{
+          position:sticky;
+          top:14px;
+        }
+        .vestiSG-view{
+          width:100%;
+          height: 680px;
+          border-radius:18px;
+          overflow:hidden;
+          background:#f8fafc;
+          border:1px solid #e5e7eb;
+          position:relative;
+        }
+
+        .vestiSG-footer{
+          margin-top:12px;
+          color:#94a3b8;
+          font-size:11px;
+          line-height:1.35;
+        }
+
+        @media (max-width: 980px){
+          .vestiSG-grid{
+            grid-template-columns: 1fr;
+          }
+          .vestiSG-rightSticky{
+            position:relative;
+            top:auto;
+          }
+          .vestiSG-view{
+            height: 540px;
+          }
+        }
+      `}</style>
+
+      <div className="vestiSG-header">
+        <div>
+          <h2 className="vestiSG-title">Guía de talles · Recomendación personalizada</h2>
+          <p className="vestiSG-sub">Basado en tus medidas y este producto.</p>
         </div>
       </div>
 
-      {/* Layout 2 columnas (en pantallas angostas se apila) */}
-      <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-        {/* Izquierda: recomendación + inputs */}
-        <div style={{ flex: "1 1 360px", minWidth: 320, display: "flex", flexDirection: "column", gap: 12 }}>
-          {/* Tarjeta principal */}
-          <div style={{ padding: 14, borderRadius: 14, background: recBg, border: recBorder }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 700 }}>{mainTitle}</div>
-                <div style={{ fontSize: 12, color: "#6b7280", marginTop: 3 }}>
-                  Seleccionaste: <strong>{prenda.sizeLabel}</strong>
-                  {" · "}
-                  Te recomendamos: <strong>{rec.sizeLabel}</strong>
-                </div>
+      <div className="vestiSG-grid">
+        {/* IZQUIERDA */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {/* HERO */}
+          <div className="vestiSG-hero" style={{ background: recBg, border: recBorder }}>
+            <div className="vestiSG-heroTop">
+              <div className="vestiSG-badge">
+                <span className="vestiSG-dot" style={{ background: recDot }} />
+                {recTitle}
               </div>
 
-              {viewMode === "shoes" && (
-                <span
-                  style={{
-                    fontSize: 12,
-                    padding: "4px 10px",
-                    borderRadius: 999,
-                    background: shoeLabel === "Perfecto" ? "#ecfdf3" : shoeLabel === "Ajustado" ? "#fef2f2" : "#fffbeb",
-                    border:
-                      shoeLabel === "Perfecto" ? "1px solid #bbf7d0" : shoeLabel === "Ajustado" ? "1px solid #fecACA" : "1px solid #fef3c7",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  Largo: <strong>{shoeLabel}</strong>
-                </span>
-              )}
+              <div style={{ fontWeight: 900, fontSize: 18 }}>
+                {recSizeLabel}
+              </div>
             </div>
 
-            <div style={{ marginTop: 10, fontSize: 13, color: "#374151" }}>{mainBody}</div>
-          </div>
+            <p className="vestiSG-heroMsg">{recBody}</p>
 
-          {/* Inputs (compactos, por categoría) */}
-          <div style={{ padding: 14, borderRadius: 14, border: "1px solid #e5e7eb", background: "#fff" }}>
-            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Ajustá tus datos (si hace falta)</div>
+            {recMeta && <p className="vestiSG-heroMeta">{recMeta}</p>}
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: viewMode === "shoes" ? "1fr" : "1fr 1fr",
-                gap: 10,
-              }}
-            >
-              {viewMode === "top" && (
-                <>
-                  <Field label="Hombros (cm)" value={user.hombros} onChange={handleChange("hombros")} />
-                  <Field label="Pecho (cm)" value={user.pecho} onChange={handleChange("pecho")} />
-                  <Field label="Cintura (cm)" value={user.cintura} onChange={handleChange("cintura")} />
-                  <Field label="Largo torso (cm)" value={user.largoTorso} onChange={handleChange("largoTorso")} />
-                </>
-              )}
-
-              {viewMode === "bottom" && (
-                <>
-                  <Field label="Cintura (cm)" value={user.cintura} onChange={handleChange("cintura")} />
-                  <Field label="Largo pierna (cm)" value={user.largoPierna} onChange={handleChange("largoPierna")} />
-                </>
-              )}
-
-              {viewMode === "shoes" && (
-                <Field label="Largo pie (cm)" value={user.pieLargo ?? 26} onChange={handleChange("pieLargo")} />
-              )}
-            </div>
-
-            <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <span
-                style={{
-                  fontSize: 11,
-                  padding: "5px 10px",
-                  borderRadius: 999,
-                  border: "1px solid #e5e7eb",
-                  background: "#f9fafb",
-                }}
-              >
-                Zonas clave:{" "}
-                <strong>
-                  {viewMode === "top" ? "pecho y hombros" : viewMode === "bottom" ? "cintura" : "largo del pie"}
-                </strong>
-              </span>
-
-              {viewMode !== "shoes" && (
-                <span
-                  style={{
-                    fontSize: 11,
-                    padding: "5px 10px",
-                    borderRadius: 999,
-                    border: "1px solid #e5e7eb",
-                    background: "#f9fafb",
-                  }}
-                >
-                  {viewMode === "top" ? "cintura y largo: informativo" : "largo pierna: warning"}
-                </span>
-              )}
+            <div className="vestiSG-chipRow">
+              {chips.map((c) => (
+                <span key={c} className="vestiSG-chip">{c}</span>
+              ))}
             </div>
           </div>
 
-          {/* Disclaimer */}
-          <div style={{ fontSize: 11, color: "#9ca3af" }}>
+          {/* ACORDEÓN MEDIDAS */}
+          <button
+            type="button"
+            className="vestiSG-accordionBtn"
+            onClick={() => setShowMedidas((v) => !v)}
+          >
+            <span>Ajustá tus medidas (si hace falta)</span>
+            <span style={{ fontSize: 14, opacity: 0.8 }}>{showMedidas ? "▲" : "▼"}</span>
+          </button>
+
+          {showMedidas && (
+            <div className="vestiSG-accordionBody">
+              <div className="vestiSG-formGrid">
+                {fieldsToShow.map((f) => (
+                  <div className="vestiSG-field" key={f.key}>
+                    <label>{f.label}</label>
+                    <input
+                      inputMode="decimal"
+                      value={(user as any)[f.key] ?? ""}
+                      onChange={handleChange(f.key as any)}
+                      placeholder={f.placeholder}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              {/* Avanzado: URL glb manual */}
+              <div style={{ marginTop: 12 }}>
+                <div className="vestiSG-field">
+                  <label>URL avatar ReadyPlayerMe (.glb) (opcional)</label>
+                  <input
+                    value={avatarUrl}
+                    onChange={(e) => {
+                      const v = e.target.value || "";
+                      setAvatarUrl(v);
+                      if (v.trim().length > 0) setShowCreatorHelp(false);
+                    }}
+                    placeholder="Pegá una URL .glb si ya tenés un avatar"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="vestiSG-footer">
             Vesti AI es una herramienta de recomendación. El calce final puede variar según marca y preferencias.
           </div>
         </div>
 
-        {/* Derecha: avatar + overlays + creator */}
-        <div style={{ flex: "1 1 360px", minWidth: 320, display: "flex", flexDirection: "column", gap: 10 }}>
-          <div
-            style={{
-              borderRadius: 16,
-              overflow: "hidden",
-              border: "1px solid #e5e7eb",
-              background: "#f9fafb",
-              position: "relative",
-              height: 560,
-            }}
-          >
+        {/* DERECHA */}
+        <div className="vestiSG-rightSticky">
+          <div className="vestiSG-view">
             {avatarUrl ? (
               <>
                 <AvatarViewer avatarUrl={avatarUrl} />
-                <FitOverlay fit={fit} viewMode={viewMode} />
+                <FitOverlay fit={fit} viewMode={viewMode} footLength={footLength} />
               </>
             ) : (
               <>
@@ -568,110 +930,49 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
                   style={{ width: "100%", height: "100%", border: "none" }}
                   allow="camera *; microphone *; clipboard-write"
                 />
+
                 {showCreatorHelp && (
                   <div
                     style={{
                       position: "absolute",
                       inset: 0,
-                      background: "rgba(15,23,42,0.65)",
+                      background: "rgba(15,23,42,0.55)",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
                       padding: 16,
                       zIndex: 10,
+                      pointerEvents: "none",
                     }}
                   >
                     <div
                       style={{
-                        background: "#f9fafb",
-                        borderRadius: 16,
-                        padding: "12px 14px",
                         maxWidth: 520,
-                        fontSize: 12,
-                        color: "#0f172a",
-                        boxShadow: "0 10px 25px rgba(15,23,42,0.35)",
+                        background: "rgba(255,255,255,0.95)",
+                        borderRadius: 14,
+                        padding: 14,
+                        border: "1px solid rgba(15,23,42,0.12)",
+                        boxShadow: "0 10px 30px rgba(15,23,42,0.18)",
                       }}
                     >
-                      <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Creá tu avatar rápido</div>
-                      <ol style={{ margin: 0, paddingLeft: 18, marginBottom: 8 }}>
-                        <li>Tocá el <strong>icono de persona con pincel</strong>.</li>
-                        <li>Después tocá el <strong>icono de cámara</strong>.</li>
-                        <li>Subí una selfie o sacá una foto.</li>
-                      </ol>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setShowCreatorHelp(false);
-                        }}
-                        style={{
-                          borderRadius: 999,
-                          border: "none",
-                          padding: "6px 10px",
-                          fontSize: 12,
-                          background: "#111827",
-                          color: "#f9fafb",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Entendido
-                      </button>
+                      <div style={{ fontWeight: 900, marginBottom: 6 }}>
+                        Creá tu avatar (rápido)
+                      </div>
+                      <div style={{ fontSize: 12.5, color: "#334155", lineHeight: 1.35 }}>
+                        Usá una selfie en el creador para generar tu avatar. Cuando se exporte,
+                        Vesti lo toma automáticamente.
+                      </div>
                     </div>
                   </div>
                 )}
               </>
             )}
           </div>
-
-          {/* URL manual */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={{ fontSize: 11, color: "#6b7280" }}>URL avatar ReadyPlayerMe (.glb)</span>
-            <input
-              type="text"
-              placeholder="Pegá o ajustá la URL .glb de tu avatar"
-              value={avatarUrl}
-              onChange={(e) => setAvatarUrl(e.target.value)}
-              style={{
-                borderRadius: 10,
-                border: "1px solid #e5e7eb",
-                padding: "8px 10px",
-                fontSize: 12,
-              }}
-            />
-          </div>
-
-          {/* Selector solo demo (si querés ocultarlo en tienda real, lo sacamos) */}
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {([
-              ["top", "Superiores"],
-              ["bottom", "Pantalón"],
-              ["shoes", "Calzado"],
-            ] as [ViewMode, string][]).map(([mode, label]) => {
-              const active = viewMode === mode;
-              return (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => setViewMode(mode)}
-                  style={{
-                    flex: "1 1 auto",
-                    padding: "6px 10px",
-                    borderRadius: 999,
-                    border: "1px solid #e5e7eb",
-                    background: active ? "#e0f2fe" : "#f9fafb",
-                    fontSize: 12,
-                    cursor: "pointer",
-                    fontWeight: active ? 700 : 600,
-                  }}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
         </div>
       </div>
     </div>
+  );
+
   );
 };
 
@@ -682,17 +983,17 @@ type FieldProps = {
 };
 
 const Field: React.FC<FieldProps> = ({ label, value, onChange }) => (
-  <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+  <label style={{ display: "flex", flexDirection: "column", gap: 2 }}>
     <span style={{ fontSize: 11, color: "#6b7280" }}>{label}</span>
     <input
       type="number"
       value={Number.isFinite(value) ? value : ""}
       onChange={onChange}
       style={{
-        borderRadius: 10,
+        borderRadius: 8,
         border: "1px solid #e5e7eb",
-        padding: "8px 10px",
-        fontSize: 13,
+        padding: "6px 8px",
+        fontSize: 12,
       }}
     />
   </label>
