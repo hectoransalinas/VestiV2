@@ -9,14 +9,13 @@ import {
 import { VestiEmbedWidget } from "./VestiEmbedWidget";
 
 export type VestiProductEmbedProps = {
-  garment?: Garment | null;
+  garment?: Garment;
   category?: GarmentCategory;
   perfilInicial?: Measurements;
   onRecomendacion?: (data: {
     fit: FitResult;
     recommendation: ReturnType<typeof makeRecommendation>;
     user: Measurements;
-    garment?: Garment | null;
     avatarUrl: string;
   }) => void;
   className?: string;
@@ -38,18 +37,19 @@ export const VestiProductEmbed: React.FC<VestiProductEmbedProps> = ({
   className,
   style,
 }) => {
-
-  // Guard: el producto todavía no llegó (postMessage) o viene vacío.
+    // Si todavía no llegó el producto (por postMessage), evitamos crashear.
   if (!garment) {
     return (
-      <div style={{ padding: 16, fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial" }}>
-        Cargando producto…
+      <div className={className} style={style}>
+        <div style={{ padding: 16, textAlign: "center", color: "#666" }}>
+          Cargando producto…
+        </div>
       </div>
     );
   }
 
   const effectiveCategory: GarmentCategory =
-    (category ?? garment?.category ?? "superiores") as GarmentCategory;
+    (category ?? garment.category ?? ("upper" as GarmentCategory)) as GarmentCategory;
 
   return (
     <div className={className} style={style}>
