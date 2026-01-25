@@ -356,6 +356,15 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
   onRecomendacion,
 }) => {
   const [user, setUser] = useState<Measurements>(perfilInicial ?? defaultPerfil);
+
+  // En modo sizeguide, el perfil viene del panel izquierdo (ProductPageVestiDemo).
+  // Sincronizamos el estado interno del widget para que overlays y recomendación reaccionen.
+  useEffect(() => {
+    if (!isSizeGuideMode) return;
+    if (!perfilInicial) return;
+    setUser(perfilInicial);
+  }, [isSizeGuideMode, perfilInicial]);
+
   const [avatarUrl, setAvatarUrl] = useState<string>("");
   const [showCreatorHelp, setShowCreatorHelp] = useState<boolean>(true);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
