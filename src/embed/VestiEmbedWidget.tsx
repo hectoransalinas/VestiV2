@@ -2,7 +2,7 @@
 // import { vestiTheme } from "../theme";
 // -------------------------------
 // Agregar wrappers de estilo Shopify Premium aquí
-import React, {useMemo, useState, useRef, useEffect} from "react";
+import React, { useMemo, useState, useRef, useEffect } from "react";
 import {
   Garment,
   GarmentCategory,
@@ -328,18 +328,6 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
   perfilInicial,
   onRecomendacion,
 }) => {
-  // En embed (iframe), puede renderizarse antes de recibir el producto por postMessage.
-  // Evitamos crashear por props undefined (ej: prenda/category).
-  if (!prenda || !categoria) {
-    return (
-      <div style={{ padding: 24, fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial" }}>
-        <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 6 }}>Vesti AI</div>
-        <div style={{ opacity: 0.75 }}>Cargando datos del producto…</div>
-      </div>
-    );
-  }
-
-
   const [user, setUser] = useState<Measurements>(perfilInicial ?? defaultPerfil);
   const [avatarUrl, setAvatarUrl] = useState<string>("");
   const [showCreatorHelp, setShowCreatorHelp] = useState<boolean>(true);
@@ -357,7 +345,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
   const lastPayloadRef = useRef<string | null>(null);
   const [footLength, setFootLength] = useState<number>(26);
 
-  const fit = useMemo(() => (prenda ? computeFit(user, prenda) : null), [user, prenda]);
+  const fit = useMemo(() => computeFit(user, prenda), [user, prenda]);
 
   const rec = useMemo(
     () =>
@@ -941,6 +929,9 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
     </div>
   );
 };
+
+// Export default (además del named export) para evitar problemas de import en el build.
+export default VestiEmbedWidget;
 
 type FieldProps = {
   label: string;

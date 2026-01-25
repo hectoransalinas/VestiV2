@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./styles.css";
 import { VestiProductEmbed } from "./embed/VestiProductEmbed";
+import { VestiEmbedWidget } from "./embed/VestiEmbedWidget";
 import type {
   Garment,
   GarmentCategory,
@@ -71,3 +72,7 @@ window.VestiAI = {
     }
   },
 };
+
+// Compat: algunas versiones (o minificados) referencian un símbolo global.
+// Esto evita el ReferenceError "VestiEmbedWidget is not defined".
+(window as any).VestiEmbedWidget = VestiEmbedWidget;
