@@ -1,4 +1,4 @@
-// Tarararara IMPORTANTE: Integrar theme.ts
+// IMPORTANTE: Integrar theme.ts
 // import { vestiTheme } from "../theme";
 // -------------------------------
 // Agregar wrappers de estilo Shopify Premium aquí
