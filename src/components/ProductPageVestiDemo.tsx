@@ -607,7 +607,8 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
         }}
       >
               {!(isEmbedded && isSizeGuideMode) && (
-                        {/* Columna izquierda: imagen, precio, talles, detalles */}
+          <>
+            {/* Columna izquierda: imagen, precio, talles, detalles */}
                         <div
                           style={{
                             flex: 1,
@@ -837,7 +838,8 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
                           </div>
                         </div>
                 
-              )}
+          </>
+        )}
         {/* Columna derecha: Vesti AI */}
         <div
           style={{
