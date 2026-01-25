@@ -1,3 +1,7 @@
+// IMPORTANTE: Integrar theme.ts
+// import { vestiTheme } from "../theme";
+// -------------------------------
+// Agregar wrappers de estilo Shopify Premium aquí
 import React, { useMemo, useState, useRef, useEffect } from "react";
 import {
   Garment,
@@ -122,6 +126,16 @@ function shoeFitFromFootLength(lenCm: number): {
 }
 
 const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
+  const isSizeGuideMode = (() => {
+    if (typeof window === "undefined") return false;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("mode") === "sizeguide";
+    } catch (_err) {
+      return false;
+    }
+  })();
+
   if (!fit && viewMode !== "shoes") return null;
 
   const isTopView = viewMode === "top";
@@ -150,7 +164,7 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
       const base = rawLengths[0];
       lengthZones = [{ ...base, zone: "largoPierna" } as typeof base];
     }
-  } else if (isTopView) {
+  } else {
     const torso = rawLengths.find((lz) => lz.zone === "largoTorso");
     if (torso) {
       lengthZones = [torso];
@@ -257,7 +271,7 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
                 padding: "3px 6px",
                 borderRadius: 999,
                 background: "#f9fafb",
-                border: "none",
+                border: "1px solid #e5e7eb",
                 fontSize: 10,
                 color: "#0f172a",
                 boxShadow: "0 3px 8px rgba(15,23,42,0.22)",
@@ -298,7 +312,7 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
               padding: "4px 10px",
               borderRadius: 999,
               background: "#f9fafb",
-              border: "none",
+              border: "1px solid #e5e7eb",
               fontSize: 11,
               color: "#0f172a",
               boxShadow: "0 3px 8px rgba(15,23,42,0.22)",
@@ -316,36 +330,6 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
   );
 };
 
-function viewModeFromCategory(cat: any): ViewMode {
-  if (cat === "pantalon" || cat === "pants") return "bottom";
-  if (cat === "calzado" || cat === "zapatilla" || cat === "shoes") return "shoes";
-  return "top";
-}
-
-type FieldProps = {
-  label: string;
-  value: number;
-  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  borderless?: boolean;
-};
-
-const Field: React.FC<FieldProps> = ({ label, value, onChange, borderless }) => (
-  <label style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-    <span style={{ fontSize: 11, color: "#6b7280" }}>{label}</span>
-    <input
-      type="number"
-      value={Number.isFinite(value) ? value : ""}
-      onChange={onChange}
-      style={{
-        borderRadius: 8,
-        border: borderless ? "none" : "1px solid #e5e7eb",
-        padding: "6px 8px",
-        fontSize: 12,
-      }}
-    />
-  </label>
-);
-
 // -------------------- Componente principal --------------------
 
 export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
@@ -354,45 +338,35 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
   perfilInicial,
   onRecomendacion,
 }) => {
-  const [user, setUser] = useState<Measurements>(perfilInicial ?? defaultPerfil);
+  const [user, setUser] = useState<Measurements>(() => (perfilInicial ?? defaultPerfil));
   const [avatarUrl, setAvatarUrl] = useState<string>("");
   const [showCreatorHelp, setShowCreatorHelp] = useState<boolean>(true);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
-  const isSizeGuideMode = useMemo(() => {
-    try {
-      return new URLSearchParams(window.location.search).get("mode") === "sizeguide";
-    } catch {
-      return false;
-    }
-  }, []);
-
-  // ✅ En modo sizeguide, las medidas viven en el panel izquierdo (fuera del widget)
-  // y entran por `perfilInicial`. El estado `user` se inicializa una sola vez,
-  // por eso hay que sincronizarlo cuando cambian las medidas externas.
-  const lastPerfilKeyRef = useRef<string>("");
-  useEffect(() => {
-    if (!isSizeGuideMode) return;
-    if (!perfilInicial) return;
-
-    // Evitar loops/sets redundantes: generamos una key estable.
-    const key = JSON.stringify(perfilInicial);
-    if (key === lastPerfilKeyRef.current) return;
-    lastPerfilKeyRef.current = key;
-
-    // Merge suave: solo pisamos campos presentes en perfilInicial.
-    setUser((prev) => ({ ...prev, ...perfilInicial }));
-  }, [isSizeGuideMode, perfilInicial]);
-
-  const [viewMode, setViewMode] = useState<ViewMode>(() => viewModeFromCategory(categoria));
-
-  // Mantener viewMode sincronizado cuando llega categoria desde Shopify/embed
-  useEffect(() => {
-    setViewMode(viewModeFromCategory(categoria));
-  }, [categoria]);
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    if ((categoria as any) === "pantalon") return "bottom";
+    if ((categoria as any) === "pants") return "bottom";
+    if ((categoria as any) === "calzado" || (categoria as any) === "zapatilla")
+      return "shoes";
+    if ((categoria as any) === "shoes") return "shoes";
+    return "top";
+  });
 
   const lastPayloadRef = useRef<string | null>(null);
   const [footLength, setFootLength] = useState<number>(26);
+  // En modo sizeguide, el perfil viene del panel izquierdo (acordeón). Si cambia, debemos
+  // sincronizarlo aquí para que overlays + recomendación se actualicen.
+  useEffect(() => {
+    if (!isSizeGuideMode) return;
+    if (!perfilInicial) return;
+    setUser((prev) => ({ ...prev, ...perfilInicial }));
+    // Si el perfil trae pieLargo, lo reflejamos también en footLength (shoes).
+    const anyPerfil: any = perfilInicial as any;
+    if (typeof anyPerfil.pieLargo === "number" && Number.isFinite(anyPerfil.pieLargo)) {
+      setFootLength(anyPerfil.pieLargo);
+    }
+  }, [isSizeGuideMode, perfilInicial]);
+
 
   const fit = useMemo(() => computeFit(user, prenda), [user, prenda]);
 
@@ -453,7 +427,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
 
     iframe.addEventListener("load", handleLoad);
     return () => iframe.removeEventListener("load", handleLoad);
-  }, []);
+  }, [iframeRef]);
 
   // Auto-ajuste de alto cuando se usa dentro de un iframe embebido
   useEffect(() => {
@@ -462,7 +436,9 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
     const sendHeight = () => {
       try {
         const doc = document;
-        const height = doc.documentElement.scrollHeight || doc.body.scrollHeight || 0;
+        const height =
+          doc.documentElement.scrollHeight || doc.body.scrollHeight || 0;
+
         window.parent.postMessage({ type: "vesti:resize", height }, "*");
       } catch {
         // ignorar
@@ -511,7 +487,8 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
   }, [fit, rec, user, prenda, avatarUrl, onRecomendacion]);
 
   const handleChange =
-    (field: keyof Measurements) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    (field: keyof Measurements) =>
+    (e: React.ChangeEvent<HTMLInputElement>) => {
       const val = Number(String(e.target.value).replace(",", "."));
       setUser((prev) => ({ ...prev, [field]: isNaN(val) ? 0 : val }));
     };
@@ -523,7 +500,13 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
 
   const creandoAvatar = !avatarUrl;
 
-  // UI de recomendación (solo modo app; en sizeguide ya la mostramos en el panel izquierdo)
+  /* =========================================================
+     REGLA PREMIUM DE ESTADO GLOBAL (SOLO UI, NO TOCA MOTOR)
+     - Verde: OK y largo relevante Perfecto
+     - Amarillo: CHECK_LENGTH o OK + largo no Perfecto
+     - Rojo: SIZE_UP o SIZE_DOWN
+  ========================================================= */
+
   const isOk = rec.tag === "OK";
   const isSizeUp = rec.tag === "SIZE_UP";
   const isSizeDown = rec.tag === "SIZE_DOWN";
@@ -536,12 +519,21 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
       ? (fit?.lengths ?? []).filter((lz) => lz.zone === "largoTorso")
       : [];
 
-  const hasLengthAlert = relevantLengths.some((lz) => (lz?.status ?? "") !== "Perfecto");
+  const hasLengthAlert = relevantLengths.some(
+    (lz) => (lz?.status ?? "") !== "Perfecto"
+  );
+
   const shouldWarn = isCheckLength || (isOk && hasLengthAlert);
   const isError = isSizeUp || isSizeDown;
 
   const recBg =
-    isOk && !shouldWarn ? "#ecfdf3" : isError ? "#fef2f2" : shouldWarn ? "#fffbeb" : "#eff6ff";
+    isOk && !shouldWarn
+      ? "#ecfdf3"
+      : isError
+      ? "#fef2f2"
+      : shouldWarn
+      ? "#fffbeb"
+      : "#eff6ff";
 
   const recBorder =
     isOk && !shouldWarn
@@ -556,7 +548,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
     isOk && !shouldWarn
       ? "Calce recomendado · Talle " + prenda.sizeLabel
       : isError
-      ? "Revisá el calce · Talle evaluado " + prenda.sizeLabel
+      ? "Revisá el calce · Talle actual " + prenda.sizeLabel
       : shouldWarn
       ? "Ojo con el largo · Talle " + prenda.sizeLabel
       : "Calce estimado · Talle " + prenda.sizeLabel;
@@ -576,100 +568,118 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
     <div
       style={{
         width: "100%",
-        maxWidth: isSizeGuideMode ? "100%" : 420,
-        margin: isSizeGuideMode ? 0 : "0 auto",
-        borderRadius: isSizeGuideMode ? 0 : 16,
-        padding: isSizeGuideMode ? 0 : 16,
-        border: isSizeGuideMode ? "none" : "1px solid #e5e7eb",
-        background: isSizeGuideMode ? "transparent" : "#ffffff",
+        maxWidth: 420,
+        margin: "0 auto",
+        borderRadius: 16,
+        padding: 16,
+        border: "1px solid #e5e7eb",
+        background: "#ffffff",
         display: "flex",
         flexDirection: "column",
         gap: 12,
-        fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+        fontFamily:
+          "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
       }}
     >
-      {/* Paso a paso (solo modo app/demo) */}
-      {!isSizeGuideMode && (
-        <div style={{ display: "flex", gap: 4, marginBottom: 4, fontSize: 12 }}>
-          <span
-            style={{
-              padding: "4px 8px",
-              borderRadius: 999,
-              border: "1px solid #e5e7eb",
-              background: creandoAvatar ? "#eef2ff" : "#f9fafb",
-            }}
-          >
-            1 · Creá tu avatar (subí una selfie)
-          </span>
-          <span
-            style={{
-              padding: "4px 8px",
-              borderRadius: 999,
-              border: "1px solid #e5e7eb",
-              background: !creandoAvatar ? "#ecfdf3" : "#f9fafb",
-            }}
-          >
-            2 · Visualizá el calce recomendado
-          </span>
-        </div>
-      )}
+      {/* Paso a paso arriba */}
+      <div
+        style={{
+          display: "flex",
+          gap: 4,
+          marginBottom: 4,
+          fontSize: 12,
+        }}
+      >
+        <span
+          style={{
+            padding: "4px 8px",
+            borderRadius: 999,
+            border: "1px solid #e5e7eb",
+            background: creandoAvatar ? "#eef2ff" : "#f9fafb",
+          }}
+        >
+          1 · Creá tu avatar (subí una selfie)
+        </span>
+        <span
+          style={{
+            padding: "4px 8px",
+            borderRadius: 999,
+            border: "1px solid #e5e7eb",
+            background: !creandoAvatar ? "#ecfdf3" : "#f9fafb",
+          }}
+        >
+          2 · Visualizá el calce recomendado
+        </span>
+      </div>
 
-      {/* Selector de tipo de prenda (solo modo app/demo; en sizeguide viene desde Shopify) */}
-      {!isSizeGuideMode && (
-        <div style={{ display: "flex", gap: 6, marginBottom: 4, fontSize: 11 }}>
-          {([
-            ["top", "Superiores"],
-            ["bottom", "Jeans / Pantalón"],
-            ["shoes", "Zapatillas"],
-          ] as [ViewMode, string][]).map(([mode, label]) => {
-            const active = viewMode === mode;
-            return (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => setViewMode(mode)}
-                style={{
-                  flex: 1,
-                  padding: "4px 6px",
-                  borderRadius: 999,
-                  border: "1px solid #e5e7eb",
-                  background: active ? "#e0f2fe" : "#f9fafb",
-                  fontSize: 11,
-                  cursor: "pointer",
-                  fontWeight: active ? 600 : 500,
-                }}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      {/* Selector de tipo de prenda (solo UI del widget/demo) */}
+      <div
+        style={{
+          display: "flex",
+          gap: 6,
+          marginBottom: 4,
+          fontSize: 11,
+        }}
+      >
+        {([
+          ["top", "Superiores"],
+          ["bottom", "Jeans / Pantalón"],
+          ["shoes", "Zapatillas"],
+        ] as [ViewMode, string][]).map(([mode, label]) => {
+          const active = viewMode === mode;
+          return (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setViewMode(mode)}
+              style={{
+                flex: 1,
+                padding: "4px 6px",
+                borderRadius: 999,
+                border: "1px solid #e5e7eb",
+                background: active ? "#e0f2fe" : "#f9fafb",
+                fontSize: 11,
+                cursor: "pointer",
+                fontWeight: active ? 600 : 500,
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
 
       {/* Panel principal 3D / Creador embebido */}
       <div
         style={{
           width: "100%",
           aspectRatio: "9 / 16",
-          borderRadius: isSizeGuideMode ? 12 : 16,
+          borderRadius: 16,
           overflow: "hidden",
           background: "#f9fafb",
-          marginBottom: isSizeGuideMode ? 0 : 8,
+          marginBottom: 8,
           position: "relative",
         }}
       >
         {avatarUrl ? (
           <>
-            <AvatarViewer avatarUrl={avatarUrl} />
+            <div style={{ width: "100%", height: "100%", transform: isSizeGuideMode ? "scale(0.88)" : "none", transformOrigin: "center top" }}>
+              <AvatarViewer avatarUrl={avatarUrl} />
+            </div>
             <FitOverlay fit={fit} viewMode={viewMode} footLength={footLength} />
           </>
         ) : (
           <>
+            <div style={{ width: "100%", height: "100%", transform: isSizeGuideMode ? "scale(0.9)" : "none", transformOrigin: "center top" }}>
             <iframe
               ref={iframeRef}
               title="Creador de avatar ReadyPlayerMe"
               src="https://readyplayer.me/avatar?frameApi"
-              style={{ width: "100%", height: "100%", border: "none" }}
+              style={{
+                width: "100%",
+                height: "100%",
+                border: "none",
+              }}
               allow="camera *; microphone *; clipboard-write"
             />
             {showCreatorHelp && (
@@ -696,18 +706,33 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
                     boxShadow: "0 10px 25px rgba(15,23,42,0.35)",
                   }}
                 >
-                  <div style={{ fontWeight: 600, marginBottom: 6, fontSize: 13 }}>
+                  <div
+                    style={{
+                      fontWeight: 600,
+                      marginBottom: 6,
+                      fontSize: 13,
+                    }}
+                  >
                     Cómo crear tu avatar en 3 pasos
                   </div>
-                  <ol style={{ margin: 0, paddingLeft: 18, marginBottom: 8 }}>
+                  <ol
+                    style={{
+                      margin: 0,
+                      paddingLeft: 18,
+                      marginBottom: 8,
+                    }}
+                  >
                     <li>
-                      Tocá el <strong>icono de la persona con pincel</strong> en la barra inferior.
+                      Tocá el{" "}
+                      <strong>icono de la persona con pincel</strong> en la barra
+                      inferior.
                     </li>
                     <li>
                       Luego tocá el <strong>icono de cámara</strong>.
                     </li>
                     <li>
-                      Elegí si querés tomarte una foto o subir una selfie. Cuando termine, tu avatar se va a mostrar automáticamente acá.
+                      Elegí si querés tomarte una foto o subir una selfie. Cuando
+                      termine, tu avatar se va a mostrar automáticamente acá.
                     </li>
                   </ol>
                   <button
@@ -736,183 +761,226 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
         )}
       </div>
 
-      {/* Todo lo siguiente es SOLO modo app/demo */}
-      {!isSizeGuideMode && (
-        <>
-          {/* Campo opcional para pegar o editar la URL manualmente */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={{ fontSize: 11, color: "#6b7280" }}>URL avatar ReadyPlayerMe (.glb)</span>
-            <input
-              type="text"
-              placeholder="Pegá o ajustá la URL .glb de tu avatar"
-              value={avatarUrl}
-              onChange={(e) => setAvatarUrl(e.target.value)}
+      {/* Campo opcional para pegar o editar la URL manualmente */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <span style={{ fontSize: 11, color: "#6b7280" }}>
+          URL avatar ReadyPlayerMe (.glb)
+        </span>
+        <input
+          type="text"
+          placeholder="Pegá o ajustá la URL .glb de tu avatar"
+          value={avatarUrl}
+          onChange={(e) => setAvatarUrl(e.target.value)}
+          style={{
+            borderRadius: 8,
+            border: "1px solid #e5e7eb",
+            padding: "6px 8px",
+            fontSize: 12,
+          }}
+        />
+      </div>
+
+      {/* Medidas rápidas */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: viewMode === "shoes" ? "1fr" : "1fr 1fr",
+          gap: 8,
+          fontSize: 12,
+        }}
+      >
+        {viewMode === "top" && (
+          <>
+            <Field label="Hombros (cm)" value={user.hombros} onChange={handleChange("hombros")} />
+            <Field label="Pecho (cm)" value={user.pecho} onChange={handleChange("pecho")} />
+            <Field label="Cintura (cm)" value={user.cintura} onChange={handleChange("cintura")} />
+            <Field label="Largo torso (cm)" value={user.largoTorso} onChange={handleChange("largoTorso")} />
+          </>
+        )}
+
+        {viewMode === "bottom" && (
+          <>
+            <Field label="Cintura (cm)" value={user.cintura} onChange={handleChange("cintura")} />
+            <Field label="Largo pierna (cm)" value={user.largoPierna} onChange={handleChange("largoPierna")} />
+          </>
+        )}
+
+        {viewMode === "shoes" && (
+          <Field label="Largo pie (cm)" value={footLength} onChange={handleFootChange} />
+        )}
+      </div>
+
+      {/* Tarjeta de recomendación */}
+      {viewMode === "shoes" ? (
+        (() => {
+          const shoe = shoeFitFromFootLength(footLength);
+          const euSize = mapFootToEuSize(footLength);
+          const bg =
+            shoe.statusKey === "Perfecto"
+              ? "#ecfdf3"
+              : shoe.statusKey === "Ajustado"
+              ? "#fef2f2"
+              : "#fffbeb";
+          const border =
+            shoe.statusKey === "Perfecto"
+              ? "1px solid #bbf7d0"
+              : shoe.statusKey === "Ajustado"
+              ? "1px solid #fecACA"
+              : "1px solid #fef3c7";
+
+          return (
+            <div
               style={{
-                borderRadius: 8,
-                border: "1px solid #e5e7eb",
-                padding: "6px 8px",
-                fontSize: 12,
+                marginTop: 4,
+                padding: 12,
+                borderRadius: 12,
+                background: bg,
+                border,
               }}
-            />
-          </div>
-
-          {/* Medidas rápidas */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: viewMode === "shoes" ? "1fr" : "1fr 1fr",
-              gap: 8,
-              fontSize: 12,
-            }}
-          >
-            {viewMode === "top" && (
-              <>
-                <Field label="Hombros (cm)" value={user.hombros} onChange={handleChange("hombros")} />
-                <Field label="Pecho (cm)" value={user.pecho} onChange={handleChange("pecho")} />
-                <Field label="Cintura (cm)" value={user.cintura} onChange={handleChange("cintura")} />
-                <Field label="Largo torso (cm)" value={user.largoTorso} onChange={handleChange("largoTorso")} />
-              </>
-            )}
-
-            {viewMode === "bottom" && (
-              <>
-                <Field label="Cintura (cm)" value={user.cintura} onChange={handleChange("cintura")} />
-                <Field label="Largo pierna (cm)" value={user.largoPierna} onChange={handleChange("largoPierna")} />
-              </>
-            )}
-
-            {viewMode === "shoes" && (
-              <Field label="Largo pie (cm)" value={footLength} onChange={handleFootChange} />
-            )}
-          </div>
-
-          {/* Tarjeta de recomendación */}
-          {viewMode === "shoes" ? (
-            (() => {
-              const shoe = shoeFitFromFootLength(footLength);
-              const euSize = mapFootToEuSize(footLength);
-              const bg =
-                shoe.statusKey === "Perfecto"
-                  ? "#ecfdf3"
+            >
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+                Calzado recomendado · Talle {euSize ?? "—"}
+              </div>
+              <div style={{ fontSize: 12, color: "#4b5563" }}>
+                {shoe.statusKey === "Perfecto"
+                  ? "Este talle es ideal para tu largo de pie. Si preferís un calce más holgado, podés probar medio número más."
                   : shoe.statusKey === "Ajustado"
-                  ? "#fef2f2"
-                  : "#fffbeb";
-              const border =
-                shoe.statusKey === "Perfecto"
-                  ? "1px solid #bbf7d0"
-                  : shoe.statusKey === "Ajustado"
-                  ? "1px solid #fecACA"
-                  : "1px solid #fef3c7";
-
-              return (
-                <div style={{ marginTop: 4, padding: 12, borderRadius: 12, background: bg, border }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
-                    Calzado recomendado · Talle {euSize ?? "—"}
-                  </div>
-                  <div style={{ fontSize: 12, color: "#4b5563" }}>
-                    {shoe.statusKey === "Perfecto"
-                      ? "Este talle es ideal para tu largo de pie. Si preferís un calce más holgado, podés probar medio número más."
-                      : shoe.statusKey === "Ajustado"
-                      ? "Este talle puede quedarte algo justo de largo. Si te gusta el calce relajado, te conviene un número más."
-                      : "Este talle puede quedarte algo largo. Si querés un calce más ajustado, probá un número menos."}
-                  </div>
-                </div>
-              );
-            })()
-          ) : (
-            <div style={{ marginTop: 4, padding: 12, borderRadius: 12, background: recBg, border: recBorder }}>
-              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{recTitle}</div>
-              <div style={{ fontSize: 12, color: "#4b5563" }}>{recBody}</div>
+                  ? "Este talle puede quedarte algo justo de largo. Si te gusta el calce relajado, te conviene un número más."
+                  : "Este talle puede quedarte algo largo. Si querés un calce más ajustado, probá un número menos."}
+              </div>
             </div>
-          )}
-
-          {/* Vista rápida por zonas */}
-          <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
-            {(() => {
-              const allWidths = fit?.widths ?? [];
-              const allLengths = fit?.lengths ?? [];
-
-              let widthBadges = allWidths;
-              let lengthBadges = allLengths;
-
-              if (viewMode === "top") {
-                widthBadges = allWidths.filter((z) => ["hombros", "pecho", "cintura"].includes(z.zone));
-                lengthBadges = allLengths.filter((lz) => lz.zone === "largoTorso");
-              } else if (viewMode === "bottom") {
-                widthBadges = allWidths.filter((z) => ["cintura", "cadera"].includes(z.zone));
-                const leg = allLengths.find((lz) => lz.zone === "largoPierna");
-                if (leg) {
-                  lengthBadges = [leg];
-                } else if (allLengths.length) {
-                  const base = allLengths[0];
-                  lengthBadges = [{ ...base, zone: "largoPierna" } as typeof base];
-                } else {
-                  lengthBadges = [];
-                }
-              } else if (viewMode === "shoes") {
-                widthBadges = [];
-                lengthBadges = [];
-              }
-
-              return (
-                <>
-                  {widthBadges.map((z) => (
-                    <span
-                      key={z.zone}
-                      style={{
-                        fontSize: 11,
-                        padding: "4px 8px",
-                        borderRadius: 999,
-                        backgroundColor: "#f9fafb",
-                        border: `1px solid ${z.color}`,
-                      }}
-                    >
-                      {z.zone}: {z.status}
-                    </span>
-                  ))}
-                  {lengthBadges.map((lz) => (
-                    <span
-                      key={lz.zone}
-                      style={{
-                        fontSize: 11,
-                        padding: "4px 8px",
-                        borderRadius: 999,
-                        backgroundColor: "#f9fafb",
-                        border: "1px solid #e5e7eb",
-                      }}
-                    >
-                      {lz.zone === "largoTorso"
-                        ? "largo torso"
-                        : lz.zone === "largoPierna"
-                        ? "largo pierna"
-                        : lz.zone}
-                      : {lz.status}
-                    </span>
-                  ))}
-                  {viewMode === "shoes" && (
-                    <span
-                      style={{
-                        fontSize: 11,
-                        padding: "4px 8px",
-                        borderRadius: 999,
-                        backgroundColor: "#f9fafb",
-                        border: "1px solid #e5e7eb",
-                      }}
-                    >
-                      largo pie: {shoeFitFromFootLength(footLength).label}
-                    </span>
-                  )}
-                </>
-              );
-            })()}
+          );
+        })()
+      ) : (
+        <div
+          style={{
+            marginTop: 4,
+            padding: 12,
+            borderRadius: 12,
+            background: recBg,
+            border: recBorder,
+          }}
+        >
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+            {recTitle}
           </div>
-        </>
+          <div style={{ fontSize: 12, color: "#4b5563" }}>{recBody}</div>
+        </div>
       )}
+
+      {/* Vista rápida por zonas */}
+      <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+        {(() => {
+          const allWidths = fit?.widths ?? [];
+          const allLengths = fit?.lengths ?? [];
+
+          let widthBadges = allWidths;
+          let lengthBadges = allLengths;
+
+          if (viewMode === "top") {
+            widthBadges = allWidths.filter((z) =>
+              ["hombros", "pecho", "cintura"].includes(z.zone)
+            );
+            lengthBadges = allLengths.filter((lz) => lz.zone === "largoTorso");
+          } else if (viewMode === "bottom") {
+            widthBadges = allWidths.filter((z) =>
+              ["cintura", "cadera"].includes(z.zone)
+            );
+            const leg = allLengths.find((lz) => lz.zone === "largoPierna");
+            if (leg) {
+              lengthBadges = [leg];
+            } else if (allLengths.length) {
+              const base = allLengths[0];
+              lengthBadges = [{ ...base, zone: "largoPierna" } as typeof base];
+            } else {
+              lengthBadges = [];
+            }
+          } else if (viewMode === "shoes") {
+            widthBadges = [];
+            lengthBadges = [];
+          }
+
+          return (
+            <>
+              {widthBadges.map((z) => (
+                <span
+                  key={z.zone}
+                  style={{
+                    fontSize: 11,
+                    padding: "4px 8px",
+                    borderRadius: 999,
+                    backgroundColor: "#f9fafb",
+                    border: `1px solid ${z.color}`,
+                  }}
+                >
+                  {z.zone}: {z.status}
+                </span>
+              ))}
+              {lengthBadges.map((lz) => (
+                <span
+                  key={lz.zone}
+                  style={{
+                    fontSize: 11,
+                    padding: "4px 8px",
+                    borderRadius: 999,
+                    backgroundColor: "#f9fafb",
+                    border: "1px solid #e5e7eb",
+                  }}
+                >
+                  {lz.zone === "largoTorso"
+                    ? "largo torso"
+                    : lz.zone === "largoPierna"
+                    ? "largo pierna"
+                    : lz.zone}
+                  : {lz.status}
+                </span>
+              ))}
+              {viewMode === "shoes" && (
+                <span
+                  style={{
+                    fontSize: 11,
+                    padding: "4px 8px",
+                    borderRadius: 999,
+                    backgroundColor: "#f9fafb",
+                    border: "1px solid #e5e7eb",
+                  }}
+                >
+                  largo pie: {shoeFitFromFootLength(footLength).label}
+                </span>
+              )}
+            </>
+          );
+        })()}
+      </div>
     </div>
   );
 };
 
+type FieldProps = {
+  label: string;
+  value: number;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+};
+
+const Field: React.FC<FieldProps> = ({ label, value, onChange }) => (
+  <label style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+    <span style={{ fontSize: 11, color: "#6b7280" }}>{label}</span>
+    <input
+      type="number"
+      value={Number.isFinite(value) ? value : ""}
+      onChange={onChange}
+      style={{
+        borderRadius: 8,
+        border: "1px solid #e5e7eb",
+        padding: "6px 8px",
+        fontSize: 12,
+      }}
+    />
+  </label>
+);
+
 // Exponer el componente en window para escenarios embed (Shopify/iframe)
+// y además export default para imports más simples.
 if (typeof window !== "undefined") {
   (window as any).VestiEmbedWidget = VestiEmbedWidget;
 }
