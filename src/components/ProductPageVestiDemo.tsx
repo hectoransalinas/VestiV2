@@ -227,6 +227,16 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
   const [lastRec, setLastRec] = useState<LastRecState>(null);
 
   const hasRealProduct =
+  const isEmbedded = (() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.self !== window.top;
+    } catch (_err) {
+      // En algunos navegadores, acceder a window.top puede lanzar por cross-origin
+      return true;
+    }
+  })();
+
     !!productFromShopify &&
     !!(
       productFromShopify.productId ||
@@ -354,36 +364,21 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
     [garmentOptions, selectedSizeId]
   );
 
-  const buildMensaje = (tag: string, cat: GarmentCategory): string => {
-  // SHOES: mensajes específicos (no hablar de "zonas" como si fuera ropa)
-  if (cat === "shoes") {
+  const buildMensaje = (tag: string): string => {
     if (tag === "OK") {
-      return "Este talle se ve adecuado para tu largo de pie.";
+      return "Este talle acompaña bien tus medidas. Revisá las zonas clave para confirmar que coincide con cómo te gusta vestirte.";
     }
     if (tag === "SIZE_UP") {
-      return "Este talle podría quedarte corto de largo. Te recomendamos comparar con un talle más.";
+      return "Vemos alguna zona más ajustada de lo habitual. Si buscás comodidad o libertad de movimiento, vale la pena comparar con un talle más.";
     }
     if (tag === "SIZE_DOWN") {
-      return "Este talle se ve algo largo. Si preferís un calce más justo, compará con un talle menos.";
+      return "Vemos algo de holgura en alguna zona. Si preferís un calce más al cuerpo o prolijo, compará con un talle menos.";
     }
-    return "Revisá el largo del calzado en tu avatar antes de decidir.";
-  }
-
-  // Resto de categorías (mensaje general)
-  if (tag === "OK") {
-    return "Este talle acompaña bien tus medidas. Revisá las zonas clave para confirmar que coincide con cómo te gusta vestirte.";
-  }
-  if (tag === "SIZE_UP") {
-    return "Vemos alguna zona más ajustada de lo habitual. Si buscás más comodidad o libertad de movimiento, vale la pena comparar con un talle más.";
-  }
-  if (tag === "SIZE_DOWN") {
-    return "Vemos algo de holgura en alguna zona. Si preferís un calce más al cuerpo o prolijo, compará con un talle menos.";
-  }
-  if (tag === "CHECK_LENGTH") {
-    return "El talle parece razonable, pero revisá el largo antes de comprar (puede variar según cómo te guste usar la prenda).";
-  }
-  return "El talle se ve razonable para tus medidas. Mirá las zonas clave en tu avatar antes de decidir.";
-};
+    if (tag === "CHECK_LENGTH") {
+      return "El talle parece razonable, pero revisá el largo antes de comprar (puede variar según cómo te guste usar el pantalón).";
+    }
+    return "El talle se ve razonable para tus medidas. Mirá las zonas clave y el largo en tu avatar antes de decidir.";
+  };
 
   const handleRecomendacion = (data: any) => {
     if (!data) return;
@@ -439,7 +434,7 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
       }
     }
 
-    const mensaje = buildMensaje(tagNormalizado, effectiveCategory);
+    const mensaje = buildMensaje(tagNormalizado);
 
     setLastRec({
       tallaSugerida,
@@ -510,6 +505,29 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
     if (c === "shoes") return "largo de pie";
     return "hombros, pecho, cintura y largo";
   }, [effectiveCategory]);
+
+  if (isEmbedded) {
+    // Modo "Guía de talles" dentro del modal/iframe: no repetimos la foto/UX de página de producto.
+    return (
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          boxSizing: "border-box",
+          padding: 16,
+        }}
+      >
+        <div style={{ maxWidth: 1120, margin: "0 auto" }}>
+          <VestiProductEmbed
+            product={product}
+            sizes={sizes}
+            defaultSelectedSize={selectedSize}
+            onSelectSize={setSelectedSize}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
