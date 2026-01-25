@@ -34,18 +34,6 @@ const defaultPerfil: Measurements = {
   largoPierna: 102,
 };
 
-// Detectar si la app está en modo "sizeguide" (iframe modal en Shopify)
-function getIsSizeGuideMode(): boolean {
-  if (typeof window === "undefined") return false;
-  try {
-    const params = new URLSearchParams(window.location.search);
-    return params.get("mode") === "sizeguide";
-  } catch (_err) {
-    return false;
-  }
-}
-
-
 // -------------------- Helpers de color y layout --------------------
 
 function zoneColor(status: string): string {
@@ -138,6 +126,15 @@ function shoeFitFromFootLength(lenCm: number): {
 }
 
 const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
+  const isSizeGuideMode = (() => {
+    if (typeof window === "undefined") return false;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("mode") === "sizeguide";
+    } catch (_err) {
+      return false;
+    }
+  })();
 
   if (!fit && viewMode !== "shoes") return null;
 
@@ -341,7 +338,6 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
   perfilInicial,
   onRecomendacion,
 }) => {
-  const isSizeGuideMode = useMemo(() => getIsSizeGuideMode(), []);
   const [user, setUser] = useState<Measurements>(() => (perfilInicial ?? defaultPerfil));
   const [avatarUrl, setAvatarUrl] = useState<string>("");
   const [showCreatorHelp, setShowCreatorHelp] = useState<boolean>(true);
@@ -761,7 +757,6 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
                 </div>
               </div>
             )}
-            </div>
           </>
         )}
       </div>
