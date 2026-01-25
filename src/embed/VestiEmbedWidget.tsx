@@ -28,7 +28,6 @@ const defaultPerfil: Measurements = {
   cintura: 82,
   largoTorso: 52,
   largoPierna: 102,
-  pieLargo: 25.8,
 };
 
 // -------------------- Helpers de color y layout --------------------
@@ -356,15 +355,6 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
   onRecomendacion,
 }) => {
   const [user, setUser] = useState<Measurements>(perfilInicial ?? defaultPerfil);
-
-  // En modo sizeguide, el perfil viene del panel izquierdo (ProductPageVestiDemo).
-  // Sincronizamos el estado interno del widget para que overlays y recomendación reaccionen.
-  useEffect(() => {
-    if (!isSizeGuideMode) return;
-    if (!perfilInicial) return;
-    setUser(perfilInicial);
-  }, [isSizeGuideMode, perfilInicial]);
-
   const [avatarUrl, setAvatarUrl] = useState<string>("");
   const [showCreatorHelp, setShowCreatorHelp] = useState<boolean>(true);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -377,6 +367,23 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
     }
   }, []);
 
+  // ✅ En modo sizeguide, las medidas viven en el panel izquierdo (fuera del widget)
+  // y entran por `perfilInicial`. El estado `user` se inicializa una sola vez,
+  // por eso hay que sincronizarlo cuando cambian las medidas externas.
+  const lastPerfilKeyRef = useRef<string>("");
+  useEffect(() => {
+    if (!isSizeGuideMode) return;
+    if (!perfilInicial) return;
+
+    // Evitar loops/sets redundantes: generamos una key estable.
+    const key = JSON.stringify(perfilInicial);
+    if (key === lastPerfilKeyRef.current) return;
+    lastPerfilKeyRef.current = key;
+
+    // Merge suave: solo pisamos campos presentes en perfilInicial.
+    setUser((prev) => ({ ...prev, ...perfilInicial }));
+  }, [isSizeGuideMode, perfilInicial]);
+
   const [viewMode, setViewMode] = useState<ViewMode>(() => viewModeFromCategory(categoria));
 
   // Mantener viewMode sincronizado cuando llega categoria desde Shopify/embed
@@ -385,6 +392,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
   }, [categoria]);
 
   const lastPayloadRef = useRef<string | null>(null);
+  const [footLength, setFootLength] = useState<number>(26);
 
   const fit = useMemo(() => computeFit(user, prenda), [user, prenda]);
 
@@ -508,6 +516,11 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
       setUser((prev) => ({ ...prev, [field]: isNaN(val) ? 0 : val }));
     };
 
+  const handleFootChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = Number(String(e.target.value).replace(",", "."));
+    setFootLength(isNaN(val) ? 0 : val);
+  };
+
   const creandoAvatar = !avatarUrl;
 
   // UI de recomendación (solo modo app; en sizeguide ya la mostramos en el panel izquierdo)
@@ -571,7 +584,6 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
         background: isSizeGuideMode ? "transparent" : "#ffffff",
         display: "flex",
         flexDirection: "column",
-        height: isSizeGuideMode ? "100%" : "auto",
         gap: 12,
         fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
       }}
@@ -638,8 +650,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
       <div
         style={{
           width: "100%",
-          aspectRatio: isSizeGuideMode ? "auto" : "9 / 16",
-          height: isSizeGuideMode ? "100%" : undefined,
+          aspectRatio: "9 / 16",
           borderRadius: isSizeGuideMode ? 12 : 16,
           overflow: "hidden",
           background: "#f9fafb",
@@ -650,7 +661,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
         {avatarUrl ? (
           <>
             <AvatarViewer avatarUrl={avatarUrl} />
-            <FitOverlay fit={fit} viewMode={viewMode} footLength={Number((user as any).pieLargo ?? 0)} />
+            <FitOverlay fit={fit} viewMode={viewMode} footLength={footLength} />
           </>
         ) : (
           <>
@@ -771,16 +782,15 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
             )}
 
             {viewMode === "shoes" && (
-              <Field label="Largo pie (cm)" value={Number((user as any).pieLargo ?? 0)} onChange={handleChange("pieLargo" as any)} />
+              <Field label="Largo pie (cm)" value={footLength} onChange={handleFootChange} />
             )}
           </div>
 
           {/* Tarjeta de recomendación */}
           {viewMode === "shoes" ? (
             (() => {
-              const footLen = Number((user as any).pieLargo ?? 0);
-              const shoe = shoeFitFromFootLength(footLen);
-              const euSize = mapFootToEuSize(footLen);
+              const shoe = shoeFitFromFootLength(footLength);
+              const euSize = mapFootToEuSize(footLength);
               const bg =
                 shoe.statusKey === "Perfecto"
                   ? "#ecfdf3"
@@ -889,7 +899,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
                         border: "1px solid #e5e7eb",
                       }}
                     >
-                      largo pie: {shoeFitFromFootLength(Number((user as any).pieLargo ?? 0)).label}
+                      largo pie: {shoeFitFromFootLength(footLength).label}
                     </span>
                   )}
                 </>
