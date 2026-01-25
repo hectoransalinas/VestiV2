@@ -72,6 +72,12 @@ function getProductFromQuery(): ProductFromShopify | null {
 }
 
 export default function App() {
+  // Modo "sizeguide" (cuando se abre dentro del modal/iframe desde Shopify)
+  // El loader de Shopify agrega ?mode=sizeguide
+  const search = typeof window !== "undefined" ? window.location.search : "";
+  const params = new URLSearchParams(search);
+  const isSizeGuideMode = params.get("mode") === "sizeguide";
+
   const [productFromShopify, setProductFromShopify] =
     useState<ProductFromShopify | null>(null);
   const [fullProductFromParent, setFullProductFromParent] =
@@ -197,10 +203,14 @@ export default function App() {
         </div>
       )}
 
-      <ProductPageVestiDemo
-        productFromShopify={productFromShopify ?? undefined}
-        fullProductFromParent={fullProductFromParent ?? undefined}
-      />
+      {isSizeGuideMode ? (
+        <VestiEmbedWidget />
+      ) : (
+        <ProductPageVestiDemo
+          productFromShopify={productFromShopify ?? undefined}
+          fullProductFromParent={fullProductFromParent ?? undefined}
+        />
+      )}
     </div>
   );
 }
