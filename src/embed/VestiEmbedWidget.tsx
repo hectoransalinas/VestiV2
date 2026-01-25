@@ -2,7 +2,7 @@
 // import { vestiTheme } from "../theme";
 // -------------------------------
 // Agregar wrappers de estilo Shopify Premium aquí
-import React, { useEffect, useMemo, useState, useRef, useEffect } from "react";
+import React, {useMemo, useState, useRef, useEffect} from "react";
 import {
   Garment,
   GarmentCategory,
@@ -32,7 +32,6 @@ const defaultPerfil: Measurements = {
   cintura: 82,
   largoTorso: 52,
   largoPierna: 102,
-  pieLargo: 26,
 };
 
 // -------------------- Helpers de color y layout --------------------
@@ -72,8 +71,59 @@ type OverlayProps = {
   footLength: number;
 };
 
-// (SHOES) La lógica de talles se calcula con el motor (fitEngine). No usamos mapeos heurísticos.
+// Mapear largo de pie en cm -> talle EU aproximado (36–45)
+function mapFootToEuSize(lenCm: number): number | null {
+  if (!Number.isFinite(lenCm) || lenCm <= 0) return null;
 
+  // Rango orientativo, luego se puede ajustar por marca
+  if (lenCm < 23.0) return 36;
+  if (lenCm < 23.7) return 37;
+  if (lenCm < 24.4) return 38;
+  if (lenCm < 25.1) return 39;
+  if (lenCm < 25.8) return 40;
+  if (lenCm < 26.5) return 41;
+  if (lenCm < 27.2) return 42;
+  if (lenCm < 27.9) return 43;
+  if (lenCm < 28.6) return 44;
+  return 45;
+}
+
+// Heurística de calce de calzado en función del largo de pie.
+function shoeFitFromFootLength(lenCm: number): {
+  label: string;
+  statusKey: "Perfecto" | "Ajustado" | "Holgado";
+} {
+  if (!Number.isFinite(lenCm) || lenCm <= 0) {
+    return { label: "Sin datos", statusKey: "Holgado" };
+  }
+
+  const eu = mapFootToEuSize(lenCm);
+
+  let statusKey: "Perfecto" | "Ajustado" | "Holgado";
+  if (lenCm < 23) {
+    statusKey = "Ajustado";
+  } else if (lenCm > 27.5) {
+    statusKey = "Holgado";
+  } else {
+    statusKey = "Perfecto";
+  }
+
+  const statusText =
+    statusKey === "Perfecto"
+      ? "Perfecto"
+      : statusKey === "Ajustado"
+      ? "Corto"
+      : "Largo";
+
+  if (!eu) {
+    return { label: statusText, statusKey };
+  }
+
+  return {
+    label: `${eu} (${statusText})`,
+    statusKey,
+  };
+}
 
 const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
   if (!fit && viewMode !== "shoes") return null;
@@ -117,12 +167,10 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
     return null;
   }
 
-  const pie = (fit?.lengths ?? []).find((l) => l.zone === "pieLargo");
-  const pieStatus = (pie?.status ?? "Perfecto") as any;
-  const statusKey = pieStatus === "Corto" ? "Ajustado" : pieStatus === "Largo" ? "Holgado" : "Perfecto";
-  const shoeFit = { label: statusKey, statusKey };
+  const shoeFit = shoeFitFromFootLength(footLength);
   const shoeColor = zoneColor(shoeFit.statusKey);
-return (
+
+  return (
     <div
       style={{
         position: "absolute",
@@ -280,20 +328,22 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
   perfilInicial,
   onRecomendacion,
 }) => {
+  // En embed (iframe), puede renderizarse antes de recibir el producto por postMessage.
+  // Evitamos crashear por props undefined (ej: prenda/category).
+  if (!prenda || !categoria) {
+    return (
+      <div style={{ padding: 24, fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial" }}>
+        <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 6 }}>Vesti AI</div>
+        <div style={{ opacity: 0.75 }}>Cargando datos del producto…</div>
+      </div>
+    );
+  }
+
+
   const [user, setUser] = useState<Measurements>(perfilInicial ?? defaultPerfil);
   const [avatarUrl, setAvatarUrl] = useState<string>("");
   const [showCreatorHelp, setShowCreatorHelp] = useState<boolean>(true);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
-
-  // En calzado, necesitamos que el largo de pie esté dentro del perfil (user.pieLargo)
-  // para que el motor recalcule al cambiar el input.
-  useEffect(() => {
-    const cat: any = categoria;
-    if (cat === "calzado" || cat === "shoes") {
-      setUser((prev) => ({ ...prev, pieLargo: (prev as any).pieLargo ?? 26 }));
-    }
-  }, [categoria]);
-
 
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     if ((categoria as any) === "pantalon") return "bottom";
@@ -305,9 +355,9 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
   });
 
   const lastPayloadRef = useRef<string | null>(null);
+  const [footLength, setFootLength] = useState<number>(26);
 
-  const fit = useMemo(() => computeFit(user, prenda), [user, prenda]);
-  const footLength = user.pieLargo ?? 26;
+  const fit = useMemo(() => (prenda ? computeFit(user, prenda) : null), [user, prenda]);
 
   const rec = useMemo(
     () =>
@@ -431,6 +481,11 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
       const val = Number(String(e.target.value).replace(",", "."));
       setUser((prev) => ({ ...prev, [field]: isNaN(val) ? 0 : val }));
     };
+
+  const handleFootChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = Number(String(e.target.value).replace(",", "."));
+    setFootLength(isNaN(val) ? 0 : val);
+  };
 
   const creandoAvatar = !avatarUrl;
 
@@ -737,37 +792,27 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
         )}
 
         {viewMode === "shoes" && (
-          <Field label="Largo pie (cm)" value={user.pieLargo ?? 26} onChange={handleChange("pieLargo")} />
+          <Field label="Largo pie (cm)" value={footLength} onChange={handleFootChange} />
         )}
       </div>
 
       {/* Tarjeta de recomendación */}
-      
-{viewMode === "shoes" ? (
+      {viewMode === "shoes" ? (
         (() => {
-          const pie = (fit?.lengths ?? []).find((l) => l.zone === "pieLargo");
-          const pieStatus = (pie?.status ?? "Perfecto") as any;
-          const statusKey = pieStatus === "Corto" ? "Ajustado" : pieStatus === "Largo" ? "Holgado" : "Perfecto";
-
+          const shoe = shoeFitFromFootLength(footLength);
+          const euSize = mapFootToEuSize(footLength);
           const bg =
-            statusKey === "Perfecto"
+            shoe.statusKey === "Perfecto"
               ? "#ecfdf3"
-              : statusKey === "Ajustado"
+              : shoe.statusKey === "Ajustado"
               ? "#fef2f2"
               : "#fffbeb";
           const border =
-            statusKey === "Perfecto"
+            shoe.statusKey === "Perfecto"
               ? "1px solid #bbf7d0"
-              : statusKey === "Ajustado"
+              : shoe.statusKey === "Ajustado"
               ? "1px solid #fecACA"
               : "1px solid #fef3c7";
-
-          const body =
-            statusKey === "Perfecto"
-              ? "Con el talle seleccionado, el largo del calzado se ve ideal para tu pie."
-              : statusKey === "Ajustado"
-              ? "Con el talle seleccionado, el calzado se ve justo de largo (podría quedar chico)."
-              : "Con el talle seleccionado, el calzado se ve holgado de largo (puede sobrar espacio).";
 
           return (
             <div
@@ -780,9 +825,15 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
               }}
             >
               <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
-                Calce estimado · Talle {prenda.sizeLabel}
+                Calzado recomendado · Talle {euSize ?? "—"}
               </div>
-              <div style={{ fontSize: 12, color: "#4b5563" }}>{body}</div>
+              <div style={{ fontSize: 12, color: "#4b5563" }}>
+                {shoe.statusKey === "Perfecto"
+                  ? "Este talle es ideal para tu largo de pie. Si preferís un calce más holgado, podés probar medio número más."
+                  : shoe.statusKey === "Ajustado"
+                  ? "Este talle puede quedarte algo justo de largo. Si te gusta el calce relajado, te conviene un número más."
+                  : "Este talle puede quedarte algo largo. Si querés un calce más ajustado, probá un número menos."}
+              </div>
             </div>
           );
         })()
@@ -801,8 +852,9 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
           </div>
           <div style={{ fontSize: 12, color: "#4b5563" }}>{recBody}</div>
         </div>
-      )
-      }      {/* Vista rápida por zonas */}
+      )}
+
+      {/* Vista rápida por zonas */}
       <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
         {(() => {
           const allWidths = fit?.widths ?? [];
@@ -879,11 +931,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
                     border: "1px solid #e5e7eb",
                   }}
                 >
-                  largo pie: {(() => {
-                    const pie = (fit?.lengths ?? []).find((l) => l.zone === "pieLargo");
-                    const pieStatus = (pie?.status ?? "Perfecto") as any;
-                    return pieStatus === "Corto" ? "Corto" : pieStatus === "Largo" ? "Largo" : "Perfecto";
-                  })()}
+                  largo pie: {shoeFitFromFootLength(footLength).label}
                 </span>
               )}
             </>
@@ -916,11 +964,3 @@ const Field: React.FC<FieldProps> = ({ label, value, onChange }) => (
     />
   </label>
 );
-
-// Expose component as a global for the Shopify theme loader (optional).
-// This avoids `ReferenceError: VestiEmbedWidget is not defined` when a theme script expects it on `window`.
-if (typeof window !== "undefined") {
-  (window as any).VestiEmbedWidget = VestiEmbedWidget;
-}
-
-export default VestiEmbedWidget;
