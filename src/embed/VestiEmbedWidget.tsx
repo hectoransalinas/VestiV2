@@ -27,7 +27,7 @@ const defaultPerfil: Measurements = {
   pecho: 96,
   cintura: 82,
   largoTorso: 52,
-  largoPierna: 102,,
+  largoPierna: 102,
   pieLargo: 25.8,
 };
 
