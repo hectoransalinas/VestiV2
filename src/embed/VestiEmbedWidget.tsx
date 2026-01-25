@@ -930,9 +930,6 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
   );
 };
 
-// Export default (además del named export) para evitar problemas de import en el build.
-export default VestiEmbedWidget;
-
 type FieldProps = {
   label: string;
   value: number;
@@ -955,3 +952,11 @@ const Field: React.FC<FieldProps> = ({ label, value, onChange }) => (
     />
   </label>
 );
+
+// Exponer el componente en window para escenarios embed (Shopify/iframe)
+// y además export default para imports más simples.
+if (typeof window !== "undefined") {
+  (window as any).VestiEmbedWidget = VestiEmbedWidget;
+}
+
+export default VestiEmbedWidget;
