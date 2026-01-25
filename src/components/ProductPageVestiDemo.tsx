@@ -370,7 +370,10 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
 
 
   const selectedGarment = useMemo(
-    () => garmentOptions.find((g) => String(g.id) === String(selectedSizeId)) ?? garmentOptions[0],
+    () =>
+      garmentOptions.find((g) => String(g.id) === String(selectedSizeId)) ??
+      garmentOptions[0] ??
+      null,
     [garmentOptions, selectedSizeId]
   );
 
@@ -397,7 +400,7 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
 
     const tallaActual =
       (garment && (garment as DemoGarment).sizeLabel) ||
-      selectedGarment.sizeLabel ||
+      selectedGarment?.sizeLabel ||
       "—";
 
     const widthsRaw: string[] =
@@ -430,7 +433,7 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
     let tallaSugerida = tallaActual;
 
     const currentId =
-      (garment && (garment as DemoGarment).id) || selectedGarment.id;
+      (garment && (garment as DemoGarment).id) || selectedGarment?.id;
     const currentIndex = garmentOptions.findIndex((g) => String(g.id) === String(currentId));
 
     if (currentIndex >= 0) {
@@ -873,11 +876,26 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
             </div>
           </div>
 
+          {selectedGarment ? (
           <VestiProductEmbed
             garment={selectedGarment}
             category={effectiveCategory}
             onRecomendacion={handleRecomendacion}
           />
+        ) : (
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            height: 420,
+            borderRadius: 14,
+            background: "rgba(0,0,0,0.04)",
+            color: "#444",
+            fontSize: 14,
+          }}>
+            Cargando datos del producto…
+          </div>
+        )}
 
           <div
             style={{
