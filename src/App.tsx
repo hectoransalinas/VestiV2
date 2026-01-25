@@ -204,7 +204,66 @@ export default function App() {
       )}
 
       {isSizeGuideMode ? (
-        <VestiEmbedWidget />
+        // IMPORTANTE:
+        // En mode=sizeguide el producto llega async por postMessage.
+        // No debemos renderizar ningún componente que asuma que existe
+        // `garment/category` antes de recibir `vesti:product`.
+        fullProductFromParent ? (
+          <ProductPageVestiDemo
+            productFromShopify={productFromShopify ?? undefined}
+            fullProductFromParent={fullProductFromParent}
+          />
+        ) : (
+          <div
+            style={{
+              padding: 18,
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+              alignItems: "center",
+              justifyContent: "center",
+              minHeight: 260,
+              color: "#0f172a",
+              fontFamily:
+                "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+            }}
+          >
+            <div style={{ fontSize: 14, fontWeight: 600 }}>
+              Cargando guía de talles…
+            </div>
+            <div style={{ fontSize: 12, color: "#64748b", maxWidth: 420, textAlign: "center" }}>
+              Estamos esperando los datos del producto desde la tienda.
+            </div>
+
+            {/* Skeleton simple para que nunca se vea “en blanco” */}
+            <div
+              style={{
+                width: "min(720px, 100%)",
+                display: "grid",
+                gridTemplateColumns: "1.2fr 1fr",
+                gap: 12,
+                marginTop: 6,
+              }}
+            >
+              <div
+                style={{
+                  height: 180,
+                  borderRadius: 16,
+                  border: "1px solid #e5e7eb",
+                  background: "linear-gradient(90deg, #f8fafc, #eef2ff, #f8fafc)",
+                }}
+              />
+              <div
+                style={{
+                  height: 180,
+                  borderRadius: 16,
+                  border: "1px solid #e5e7eb",
+                  background: "linear-gradient(90deg, #f8fafc, #f1f5f9, #f8fafc)",
+                }}
+              />
+            </div>
+          </div>
+        )
       ) : (
         <ProductPageVestiDemo
           productFromShopify={productFromShopify ?? undefined}
