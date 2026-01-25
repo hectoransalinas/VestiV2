@@ -65,13 +65,6 @@ const lengthBarLayout: Record<string, { top: string; bottom: string }> = {
 
 type ViewMode = "top" | "bottom" | "shoes";
 
-function categoryToViewMode(cat: any): ViewMode {
-  if (cat === "pantalon" || cat === "pants") return "bottom";
-  if (cat === "calzado" || cat === "zapatilla" || cat === "shoes") return "shoes";
-  return "top";
-}
-
-
 type OverlayProps = {
   fit: FitResult;
   viewMode: ViewMode;
@@ -176,104 +169,6 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
 
   const shoeFit = shoeFitFromFootLength(footLength);
   const shoeColor = zoneColor(shoeFit.statusKey);
-if (isCompactGuide) {
-  return (
-    <div
-      style={{
-        width: "100%",
-        height: "100%",
-        borderRadius: 18,
-        overflow: "hidden",
-        border: "1px solid #e5e7eb",
-        background: "#ffffff",
-        fontFamily:
-          "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
-          minHeight: 620,
-          position: "relative",
-          background: "#f9fafb",
-        }}
-      >
-        {avatarUrl ? (
-          <>
-            <AvatarViewer avatarUrl={avatarUrl} />
-            <FitOverlay fit={fit} viewMode={viewMode} footLength={footLength} />
-          </>
-        ) : (
-          <>
-            <iframe
-              ref={iframeRef}
-              title="Creador de avatar ReadyPlayerMe"
-              src="https://readyplayer.me/avatar?frameApi"
-              style={{ width: "100%", height: "100%", border: "none" }}
-              allow="camera *; microphone *; clipboard-write"
-            />
-            {showCreatorHelp && (
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  background: "rgba(15,23,42,0.65)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  padding: 16,
-                  zIndex: 10,
-                }}
-              >
-                <div
-                  style={{
-                    background: "#f9fafb",
-                    borderRadius: 16,
-                    padding: "12px 14px",
-                    maxWidth: 420,
-                    fontSize: 12,
-                    color: "#0f172a",
-                    boxShadow: "0 10px 25px rgba(15,23,42,0.35)",
-                  }}
-                >
-                  <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 13 }}>
-                    Creá tu avatar (30 segundos)
-                  </div>
-                  <div style={{ color: "#334155", lineHeight: 1.35 }}>
-                    Tocá el ícono de la persona con pincel → cámara → sacá o subí una selfie.
-                    Cuando termine, tu avatar aparece automáticamente.
-                  </div>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowCreatorHelp(false);
-                    }}
-                    style={{
-                      marginTop: 10,
-                      borderRadius: 999,
-                      border: "none",
-                      padding: "7px 12px",
-                      fontSize: 12,
-                      background: "#111827",
-                      color: "#ffffff",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Entendido
-                  </button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-
 
   return (
     <div
@@ -366,7 +261,7 @@ if (isCompactGuide) {
                 padding: "3px 6px",
                 borderRadius: 999,
                 background: "#f9fafb",
-                border: "1px solid #e5e7eb",
+                border: isSizeGuideMode ? "none" : "1px solid #e5e7eb",
                 fontSize: 10,
                 color: "#0f172a",
                 boxShadow: "0 3px 8px rgba(15,23,42,0.22)",
@@ -407,7 +302,7 @@ if (isCompactGuide) {
               padding: "4px 10px",
               borderRadius: 999,
               background: "#f9fafb",
-              border: "1px solid #e5e7eb",
+              border: isSizeGuideMode ? "none" : "1px solid #e5e7eb",
               fontSize: 11,
               color: "#0f172a",
               boxShadow: "0 3px 8px rgba(15,23,42,0.22)",
@@ -437,29 +332,23 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
   const [avatarUrl, setAvatarUrl] = useState<string>("");
   const [showCreatorHelp, setShowCreatorHelp] = useState<boolean>(true);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
-const isSizeguideMode = useMemo(() => {
-  if (typeof window === "undefined") return false;
-  try {
-    return new URLSearchParams(window.location.search).get("mode") === "sizeguide";
-  } catch {
-    return false;
-  }
-}, []);
 
-const isEmbedded = typeof window !== "undefined" && window.self !== window.top;
+  const isSizeGuideMode = useMemo(() => {
+    try {
+      return new URLSearchParams(window.location.search).get("mode") === "sizeguide";
+    } catch {
+      return false;
+    }
+  }, []);
 
-// En sizeguide queremos una experiencia "guía" (Adidas): sin UI de app (pasos, selector, inputs, tarjetas duplicadas).
-const isCompactGuide = isSizeguideMode; // aplica tanto embebido como abierto directo con ?mode=sizeguide
-
-
-  const [viewMode, setViewMode] = useState<ViewMode>(() => categoryToViewMode(categoria));
-
-useEffect(() => {
-  // Si la categoría viene desde Shopify/producto, sincronizamos la vista (upper/pants/shoes -> top/bottom/shoes).
-  // En modo guía no permitimos que el usuario cambie de categoría manualmente.
-  setViewMode(categoryToViewMode(categoria));
-}, [categoria]);
-
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    if ((categoria as any) === "pantalon") return "bottom";
+    if ((categoria as any) === "pants") return "bottom";
+    if ((categoria as any) === "calzado" || (categoria as any) === "zapatilla")
+      return "shoes";
+    if ((categoria as any) === "shoes") return "shoes";
+    return "top";
+  });
 
   const lastPayloadRef = useRef<string | null>(null);
   const [footLength, setFootLength] = useState<number>(26);
@@ -664,19 +553,20 @@ useEffect(() => {
     <div
       style={{
         width: "100%",
-        maxWidth: 420,
-        margin: "0 auto",
-        borderRadius: 16,
-        padding: 16,
-        border: "1px solid #e5e7eb",
-        background: "#ffffff",
+        maxWidth: isSizeGuideMode ? "100%" : 420,
+        margin: isSizeGuideMode ? 0 : "0 auto",
+        borderRadius: isSizeGuideMode ? 0 : 16,
+        padding: isSizeGuideMode ? 0 : 16,
+        border: isSizeGuideMode ? "none" : "1px solid #e5e7eb",
+        background: isSizeGuideMode ? "transparent" : "#ffffff",
         display: "flex",
         flexDirection: "column",
         gap: 12,
         fontFamily:
           "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
       }}
-    >
+    >      {!isSizeGuideMode && (
+
       {/* Paso a paso arriba */}
       <div
         style={{
@@ -690,7 +580,7 @@ useEffect(() => {
           style={{
             padding: "4px 8px",
             borderRadius: 999,
-            border: "1px solid #e5e7eb",
+            border: isSizeGuideMode ? "none" : "1px solid #e5e7eb",
             background: creandoAvatar ? "#eef2ff" : "#f9fafb",
           }}
         >
@@ -700,15 +590,17 @@ useEffect(() => {
           style={{
             padding: "4px 8px",
             borderRadius: 999,
-            border: "1px solid #e5e7eb",
+            border: isSizeGuideMode ? "none" : "1px solid #e5e7eb",
             background: !creandoAvatar ? "#ecfdf3" : "#f9fafb",
           }}
         >
           2 · Visualizá el calce recomendado
         </span>
       </div>
+      )}
 
-      {/* Selector de tipo de prenda (solo UI del widget/demo) */}
+      {!isSizeGuideMode && (
+{/* Selector de tipo de prenda (solo UI del widget/demo) */}
       <div
         style={{
           display: "flex",
@@ -732,7 +624,7 @@ useEffect(() => {
                 flex: 1,
                 padding: "4px 6px",
                 borderRadius: 999,
-                border: "1px solid #e5e7eb",
+                border: isSizeGuideMode ? "none" : "1px solid #e5e7eb",
                 background: active ? "#e0f2fe" : "#f9fafb",
                 fontSize: 11,
                 cursor: "pointer",
@@ -744,13 +636,14 @@ useEffect(() => {
           );
         })}
       </div>
+)}
 
       {/* Panel principal 3D / Creador embebido */}
       <div
         style={{
           width: "100%",
           aspectRatio: "9 / 16",
-          borderRadius: 16,
+          borderRadius: isSizeGuideMode ? 0 : 16,
           overflow: "hidden",
           background: "#f9fafb",
           marginBottom: 8,
@@ -784,14 +677,14 @@ useEffect(() => {
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  padding: 16,
+                  padding: isSizeGuideMode ? 0 : 16,
                   zIndex: 10,
                 }}
               >
                 <div
                   style={{
                     background: "#f9fafb",
-                    borderRadius: 16,
+                    borderRadius: isSizeGuideMode ? 0 : 16,
                     padding: "12px 14px",
                     maxWidth: "90%",
                     fontSize: 12,
@@ -854,7 +747,8 @@ useEffect(() => {
         )}
       </div>
 
-      {/* Campo opcional para pegar o editar la URL manualmente */}
+      {!isSizeGuideMode && (
+{/* Campo opcional para pegar o editar la URL manualmente */}
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         <span style={{ fontSize: 11, color: "#6b7280" }}>
           URL avatar ReadyPlayerMe (.glb)
@@ -866,7 +760,7 @@ useEffect(() => {
           onChange={(e) => setAvatarUrl(e.target.value)}
           style={{
             borderRadius: 8,
-            border: "1px solid #e5e7eb",
+            border: isSizeGuideMode ? "none" : "1px solid #e5e7eb",
             padding: "6px 8px",
             fontSize: 12,
           }}
@@ -1017,7 +911,7 @@ useEffect(() => {
                     padding: "4px 8px",
                     borderRadius: 999,
                     backgroundColor: "#f9fafb",
-                    border: "1px solid #e5e7eb",
+                    border: isSizeGuideMode ? "none" : "1px solid #e5e7eb",
                   }}
                 >
                   {lz.zone === "largoTorso"
@@ -1035,7 +929,7 @@ useEffect(() => {
                     padding: "4px 8px",
                     borderRadius: 999,
                     backgroundColor: "#f9fafb",
-                    border: "1px solid #e5e7eb",
+                    border: isSizeGuideMode ? "none" : "1px solid #e5e7eb",
                   }}
                 >
                   largo pie: {shoeFitFromFootLength(footLength).label}
@@ -1045,7 +939,8 @@ useEffect(() => {
           );
         })()}
       </div>
-    </div>
+)}
+</div>
   );
 };
 
@@ -1064,7 +959,7 @@ const Field: React.FC<FieldProps> = ({ label, value, onChange }) => (
       onChange={onChange}
       style={{
         borderRadius: 8,
-        border: "1px solid #e5e7eb",
+        border: isSizeGuideMode ? "none" : "1px solid #e5e7eb",
         padding: "6px 8px",
         fontSize: 12,
       }}
