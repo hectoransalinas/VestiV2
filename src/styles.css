@@ -288,3 +288,30 @@ body {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+
+/* =====================
+   Vesti Sizeguide Mode
+   ===================== */
+html[data-vesti-mode="sizeguide"],
+html[data-vesti-mode="sizeguide"] body {
+  background: var(--bg);
+  height: 100%;
+  margin: 0;
+}
+
+html[data-vesti-mode="sizeguide"] body {
+  overflow: hidden; /* el modal ya maneja el scroll */
+}
+
+/* Si existieran layouts de "app", los apagamos en sizeguide */
+html[data-vesti-mode="sizeguide"] .app-header,
+html[data-vesti-mode="sizeguide"] .app-sidebar,
+html[data-vesti-mode="sizeguide"] .app-footer {
+  display: none !important;
+}
+
+/* Ajuste base para que el contenido respire dentro del iframe */
+html[data-vesti-mode="sizeguide"] #root {
+  height: 100%;
+}
