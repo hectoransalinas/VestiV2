@@ -260,228 +260,6 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
     }
   })();
 
-// Marca el modo en el <html> para permitir overrides de CSS sin ensuciar la lógica del motor.
-useEffect(() => {
-  if (typeof document === "undefined") return;
-
-  if (isSizeGuideMode) {
-    document.documentElement.dataset.vestiMode = "sizeguide";
-  
-if (isEmbedded && isSizeGuideMode) {
-  return (
-    <div
-      className="vesti-sizeguide"
-      style={{
-        width: "100%",
-        height: "100%",
-        boxSizing: "border-box",
-        padding: 20,
-        fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
-      }}
-    >
-      {/* Header minimal tipo Adidas */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 12,
-          marginBottom: 14,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div
-            style={{
-              width: 12,
-              height: 12,
-              borderRadius: 4,
-              background: "#22c55e",
-            }}
-          />
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>
-              Guía de talles · Recomendación personalizada
-            </div>
-            <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
-              Basado en tus medidas y este producto
-            </div>
-          </div>
-        </div>
-
-        <div
-          style={{
-            padding: "6px 12px",
-            borderRadius: 999,
-            background: "#eef2ff",
-            border: "1px solid #c7d2fe",
-            fontSize: 11,
-            color: "#3730a3",
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            whiteSpace: "nowrap",
-          }}
-        >
-          <span
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: "50%",
-              background: "#22c55e",
-            }}
-          />
-          Probador inteligente · <strong>Vesti AI</strong>
-        </div>
-      </div>
-
-      {/* Dos columnas: izquierda recomendación, derecha avatar */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 18,
-          alignItems: "stretch",
-        }}
-      >
-        {/* Izquierda: Recomendación */}
-        <div
-          style={{
-            background: "#ffffff",
-            border: "1px solid #e5e7eb",
-            borderRadius: 18,
-            padding: 18,
-            display: "flex",
-            flexDirection: "column",
-            gap: 12,
-            minHeight: 520,
-          }}
-        >
-          <div
-            style={{
-              alignSelf: "flex-start",
-              padding: "8px 12px",
-              borderRadius: 999,
-              background: "#ecfdf3",
-              border: "1px solid #bbf7d0",
-              fontSize: 12,
-              fontWeight: 700,
-              color: "#065f46",
-            }}
-          >
-            Tu talle ideal
-          </div>
-
-          <div style={{ fontSize: 56, fontWeight: 800, color: "#111827", lineHeight: 1 }}>
-            {lastRec?.tallaSugerida ?? selectedGarment?.sizeLabel ?? "—"}
-          </div>
-
-          <div style={{ fontSize: 14, color: "#4b5563" }}>
-            {lastRec
-              ? "Este es el talle que mejor se ajusta a vos para este producto."
-              : "Creá tu avatar o ajustá tus medidas para ver tu talle ideal."}
-          </div>
-
-          {/* Estado / mensaje */}
-          <div
-            style={{
-              marginTop: 4,
-              padding: 14,
-              borderRadius: 14,
-              background: recBackground,
-              border: recBorder,
-            }}
-          >
-            <div style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>
-              {lastRec ? sizeTagLabel(lastRec.tag) : "Buen calce"}
-            </div>
-
-            <div style={{ marginTop: 6, fontSize: 13, color: "#374151", lineHeight: 1.45 }}>
-              {lastRec
-                ? lastRec.mensaje
-                : `Vesti AI analiza el calce en ${vestiIntroZonesText} y te sugiere el talle más adecuado.`}
-            </div>
-
-            {lastRec?.resumenZonas ? (
-              <div style={{ marginTop: 8, fontSize: 12, color: "#6b7280" }}>
-                <strong>Zonas clave:</strong> {lastRec.resumenZonas}
-              </div>
-            ) : null}
-          </div>
-
-          <div style={{ marginTop: "auto", fontSize: 12, color: "#6b7280" }}>
-            ¿Querés ajustar tus datos? (lo vemos en el próximo paso: inputs colapsados por defecto)
-          </div>
-
-          <div style={{ fontSize: 10, color: "#9ca3af" }}>
-            Vesti AI es una recomendación. El calce final puede variar según preferencias y marca.
-          </div>
-        </div>
-
-        {/* Derecha: Avatar / overlays */}
-        <div
-          style={{
-            background: "#ffffff",
-            border: "1px solid #e5e7eb",
-            borderRadius: 18,
-            padding: 12,
-            display: "flex",
-            flexDirection: "column",
-            minHeight: 520,
-            overflow: "hidden",
-          }}
-        >
-          {selectedGarment ? (
-            <VestiProductEmbed
-              garment={selectedGarment}
-              category={effectiveCategory}
-              onRecomendacion={handleRecomendacion}
-            />
-          ) : (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flex: 1,
-                borderRadius: 14,
-                background: "rgba(0,0,0,0.04)",
-                color: "#444",
-                fontSize: 14,
-              }}
-            >
-              Cargando datos del producto…
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Responsive */}
-      <style>
-        {`
-          @media (max-width: 860px) {
-            .vesti-sizeguide > div:nth-child(2) {
-              grid-template-columns: 1fr !important;
-            }
-          }
-        `}
-      </style>
-    </div>
-  );
-}
-
-  return () => {
-      try {
-        delete (document.documentElement.dataset as any).vestiMode;
-      } catch (_err) {}
-    };
-  }
-
-  try {
-    delete (document.documentElement.dataset as any).vestiMode;
-  } catch (_err) {}
-}, [isSizeGuideMode]);
-
-
   // 👉 Categoría efectiva que va al motor (normalizada)
   const effectiveCategory: GarmentCategory = useMemo(() => {
     return normalizeCategoryUI(fullProductFromParent?.category ?? DEMO_CATEGORY);
@@ -741,7 +519,220 @@ if (isEmbedded && isSizeGuideMode) {
     return "hombros, pecho, cintura y largo";
   }, [effectiveCategory]);
 
-  return (
+  
+  // =========================
+  // SIZEGUIDE (modo Shopify / iframe)
+  // Render limpio tipo "guía de talles" (estilo Adidas/Nike).
+  // =========================
+  if (isSizeGuideMode) {
+    const talleActual = selectedGarment?.sizeLabel ?? "—";
+    const talleSugerido = lastRec?.tallaSugerida ?? talleActual;
+    const mensaje = lastRec?.mensaje ?? "Cargando recomendación…";
+    const resumen = lastRec?.resumenZonas ?? "";
+
+    const chips = resumen
+      ? resumen.split(" · ").filter(Boolean)
+      : [];
+
+    return (
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          boxSizing: "border-box",
+          padding: 20,
+          fontFamily:
+            "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+          background: "#ffffff",
+        }}
+      >
+        {/* Header minimal */}
+        <div
+          className="vesti-sg-cols"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            marginBottom: 14,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div
+              style={{
+                width: 10,
+                height: 10,
+                borderRadius: 999,
+                background: "#16a34a",
+              }}
+            />
+            <div style={{ fontWeight: 700, color: "#111827" }}>Vesti AI</div>
+            <div style={{ color: "#6b7280" }}>Guía de talles · Recomendación personalizada</div>
+          </div>
+
+          <button
+            onClick={() => window.parent?.postMessage({ type: "vesti:close" }, "*")}
+            style={{
+              border: "1px solid rgba(0,0,0,0.08)",
+              background: "#fff",
+              borderRadius: 10,
+              padding: "8px 10px",
+              cursor: "pointer",
+              color: "#111827",
+              fontWeight: 600,
+            }}
+            title="Cerrar"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Layout 2 columnas */}
+        <div
+          style={{
+            display: "flex",
+            gap: 18,
+            alignItems: "stretch",
+            height: "calc(100% - 52px)",
+          }}
+        >
+          {/* Columna izquierda: recomendación */}
+          <div style={{ flex: "0 0 420px", maxWidth: 460, width: "100%" }}>
+            <div
+              style={{
+                border: "1px solid rgba(0,0,0,0.08)",
+                borderRadius: 16,
+                padding: 16,
+                background: "#fafafa",
+              }}
+            >
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "6px 10px",
+                  borderRadius: 999,
+                  background: "#d1fae5",
+                  color: "#065f46",
+                  fontWeight: 700,
+                  fontSize: 13,
+                }}
+              >
+                Tu talle ideal
+              </div>
+
+              <div style={{ fontSize: 54, fontWeight: 800, marginTop: 10, color: "#111827" }}>
+                {talleSugerido}
+              </div>
+
+              <div style={{ color: "#374151", marginTop: 6, lineHeight: 1.4 }}>
+                {mensaje}
+              </div>
+
+              <div
+                style={{
+                  marginTop: 14,
+                  padding: 12,
+                  borderRadius: 14,
+                  background: "#ffffff",
+                  border: "1px solid rgba(0,0,0,0.06)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 999,
+                      background: "#e5e7eb",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontWeight: 800,
+                      color: "#111827",
+                    }}
+                  >
+                    ✓
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 800, color: "#111827" }}>
+                      Calce estimado
+                    </div>
+                    <div style={{ color: "#6b7280", fontSize: 13 }}>
+                      Basado en tus medidas y este producto
+                    </div>
+                  </div>
+                </div>
+
+                {chips.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+                    {chips.map((c, i) => (
+                      <span
+                        key={i}
+                        style={{
+                          fontSize: 12,
+                          padding: "6px 10px",
+                          borderRadius: 999,
+                          background: "rgba(0,0,0,0.04)",
+                          border: "1px solid rgba(0,0,0,0.06)",
+                          color: "#111827",
+                        }}
+                      >
+                        {c}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Placeholder para inputs colapsados (lo trabajamos en el próximo paso) */}
+              <div style={{ marginTop: 14 }}>
+                <div style={{ color: "#6b7280", fontSize: 13 }}>
+                  ¿Querés ajustar tus datos? (próximo paso: acordeón de inputs)
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Columna derecha: avatar + overlays */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {selectedGarment ? (
+              <VestiProductEmbed
+                garment={selectedGarment}
+                category={effectiveCategory}
+                onRecomendacion={handleRecomendacion}
+              />
+            ) : (
+              <div
+                style={{
+                  height: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 16,
+                  background: "rgba(0,0,0,0.04)",
+                  color: "#444",
+                  fontSize: 14,
+                }}
+              >
+                Esperando datos del producto…
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Mobile: apilar columnas */}
+        <style>{`
+          @media (max-width: 860px) {
+            .vesti-sg-cols { flex-direction: column; height: auto; }
+          }
+        `}</style>
+      </div>
+    );
+  }
+
+return (
     <div
       style={{
         width: "100%",
