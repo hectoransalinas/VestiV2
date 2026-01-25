@@ -757,6 +757,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
                 </div>
               </div>
             )}
+            </div>
           </>
         )}
       </div>
