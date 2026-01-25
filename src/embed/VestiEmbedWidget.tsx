@@ -65,6 +65,13 @@ const lengthBarLayout: Record<string, { top: string; bottom: string }> = {
 
 type ViewMode = "top" | "bottom" | "shoes";
 
+function categoryToViewMode(cat: any): ViewMode {
+  if (cat === "pantalon" || cat === "pants") return "bottom";
+  if (cat === "calzado" || cat === "zapatilla" || cat === "shoes") return "shoes";
+  return "top";
+}
+
+
 type OverlayProps = {
   fit: FitResult;
   viewMode: ViewMode;
@@ -169,6 +176,104 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
 
   const shoeFit = shoeFitFromFootLength(footLength);
   const shoeColor = zoneColor(shoeFit.statusKey);
+if (isCompactGuide) {
+  return (
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        borderRadius: 18,
+        overflow: "hidden",
+        border: "1px solid #e5e7eb",
+        background: "#ffffff",
+        fontFamily:
+          "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          minHeight: 620,
+          position: "relative",
+          background: "#f9fafb",
+        }}
+      >
+        {avatarUrl ? (
+          <>
+            <AvatarViewer avatarUrl={avatarUrl} />
+            <FitOverlay fit={fit} viewMode={viewMode} footLength={footLength} />
+          </>
+        ) : (
+          <>
+            <iframe
+              ref={iframeRef}
+              title="Creador de avatar ReadyPlayerMe"
+              src="https://readyplayer.me/avatar?frameApi"
+              style={{ width: "100%", height: "100%", border: "none" }}
+              allow="camera *; microphone *; clipboard-write"
+            />
+            {showCreatorHelp && (
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  background: "rgba(15,23,42,0.65)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: 16,
+                  zIndex: 10,
+                }}
+              >
+                <div
+                  style={{
+                    background: "#f9fafb",
+                    borderRadius: 16,
+                    padding: "12px 14px",
+                    maxWidth: 420,
+                    fontSize: 12,
+                    color: "#0f172a",
+                    boxShadow: "0 10px 25px rgba(15,23,42,0.35)",
+                  }}
+                >
+                  <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 13 }}>
+                    Creá tu avatar (30 segundos)
+                  </div>
+                  <div style={{ color: "#334155", lineHeight: 1.35 }}>
+                    Tocá el ícono de la persona con pincel → cámara → sacá o subí una selfie.
+                    Cuando termine, tu avatar aparece automáticamente.
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowCreatorHelp(false);
+                    }}
+                    style={{
+                      marginTop: 10,
+                      borderRadius: 999,
+                      border: "none",
+                      padding: "7px 12px",
+                      fontSize: 12,
+                      background: "#111827",
+                      color: "#ffffff",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Entendido
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 
   return (
     <div
@@ -332,15 +437,29 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
   const [avatarUrl, setAvatarUrl] = useState<string>("");
   const [showCreatorHelp, setShowCreatorHelp] = useState<boolean>(true);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
+const isSizeguideMode = useMemo(() => {
+  if (typeof window === "undefined") return false;
+  try {
+    return new URLSearchParams(window.location.search).get("mode") === "sizeguide";
+  } catch {
+    return false;
+  }
+}, []);
 
-  const [viewMode, setViewMode] = useState<ViewMode>(() => {
-    if ((categoria as any) === "pantalon") return "bottom";
-    if ((categoria as any) === "pants") return "bottom";
-    if ((categoria as any) === "calzado" || (categoria as any) === "zapatilla")
-      return "shoes";
-    if ((categoria as any) === "shoes") return "shoes";
-    return "top";
-  });
+const isEmbedded = typeof window !== "undefined" && window.self !== window.top;
+
+// En sizeguide queremos una experiencia "guía" (Adidas): sin UI de app (pasos, selector, inputs, tarjetas duplicadas).
+const isCompactGuide = isSizeguideMode; // aplica tanto embebido como abierto directo con ?mode=sizeguide
+
+
+  const [viewMode, setViewMode] = useState<ViewMode>(() => categoryToViewMode(categoria));
+
+useEffect(() => {
+  // Si la categoría viene desde Shopify/producto, sincronizamos la vista (upper/pants/shoes -> top/bottom/shoes).
+  // En modo guía no permitimos que el usuario cambie de categoría manualmente.
+  setViewMode(categoryToViewMode(categoria));
+}, [categoria]);
+
 
   const lastPayloadRef = useRef<string | null>(null);
   const [footLength, setFootLength] = useState<number>(26);
@@ -525,7 +644,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
     isOk && !shouldWarn
       ? "Calce recomendado · Talle " + prenda.sizeLabel
       : isError
-      ? "Revisá el calce · Talle actual " + prenda.sizeLabel
+      ? "Revisá el calce · Talle evaluado " + prenda.sizeLabel
       : shouldWarn
       ? "Ojo con el largo · Talle " + prenda.sizeLabel
       : "Calce estimado · Talle " + prenda.sizeLabel;
