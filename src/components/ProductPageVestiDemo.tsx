@@ -227,16 +227,6 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
   const [lastRec, setLastRec] = useState<LastRecState>(null);
 
   const hasRealProduct =
-  const isEmbedded = (() => {
-    if (typeof window === "undefined") return false;
-    try {
-      return window.self !== window.top;
-    } catch (_err) {
-      // En algunos navegadores, acceder a window.top puede lanzar por cross-origin
-      return true;
-    }
-  })();
-
     !!productFromShopify &&
     !!(
       productFromShopify.productId ||
@@ -249,6 +239,26 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
     !!fullProductFromParent &&
     typeof fullProductFromParent.descriptionHtml === "string" &&
     fullProductFromParent.descriptionHtml.trim().length > 0;
+
+  // Detecto si estoy embebido en un iframe + si vengo en modo "sizeguide" (desde Shopify).
+  const isEmbedded = (() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.self !== window.top;
+    } catch (_err) {
+      return true;
+    }
+  })();
+
+  const isSizeGuideMode = (() => {
+    if (typeof window === "undefined") return false;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("mode") === "sizeguide";
+    } catch (_err) {
+      return false;
+    }
+  })();
 
   // 👉 Categoría efectiva que va al motor (normalizada)
   const effectiveCategory: GarmentCategory = useMemo(() => {
@@ -506,29 +516,6 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
     return "hombros, pecho, cintura y largo";
   }, [effectiveCategory]);
 
-  if (isEmbedded) {
-    // Modo "Guía de talles" dentro del modal/iframe: no repetimos la foto/UX de página de producto.
-    return (
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
-          boxSizing: "border-box",
-          padding: 16,
-        }}
-      >
-        <div style={{ maxWidth: 1120, margin: "0 auto" }}>
-          <VestiProductEmbed
-            product={product}
-            sizes={sizes}
-            defaultSelectedSize={selectedSize}
-            onSelectSize={setSelectedSize}
-          />
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div
       style={{
@@ -619,236 +606,238 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
           flexWrap: "wrap",
         }}
       >
-        {/* Columna izquierda: imagen, precio, talles, detalles */}
-        <div
-          style={{
-            flex: 1,
-            minWidth: 280,
-            maxWidth: 520,
-            display: "flex",
-            flexDirection: "column",
-            gap: 16,
-          }}
-        >
-          {/* Imagen */}
-          <div
-            style={{
-              borderRadius: 20,
-              overflow: "hidden",
-              border: "1px solid #e5e7eb",
-              background: "#f9fafb",
-            }}
-          >
-            <img
-              src={displayProduct.imageUrl}
-              alt={displayProduct.name}
-              style={{
-                width: "100%",
-                height: "auto",
-                display: "block",
-                objectFit: "cover",
-              }}
-            />
-          </div>
-
-          {/* Precio + color */}
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              flexWrap: "wrap",
-              gap: 8,
-            }}
-          >
-            <div>
-              <div
-                style={{
-                  fontSize: 22,
-                  fontWeight: 700,
-                  color: "#111827",
-                }}
-              >
-                {priceFormatted}
-              </div>
-              <div
-                style={{
-                  fontSize: 12,
-                  color: "#6b7280",
-                }}
-              >
-                3 cuotas sin interés pagando con tarjeta
-              </div>
-            </div>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-              }}
-            >
-              <div
-                style={{
-                  width: 20,
-                  height: 20,
-                  borderRadius: "999px",
-                  background:
-                    "radial-gradient(circle at 30% 30%, #4ade80, #065f46)",
-                  border: "1px solid #e5e7eb",
-                }}
-              />
-              <span
-                style={{
-                  fontSize: 12,
-                  color: "#374151",
-                }}
-              >
-                Color: <strong>{displayProduct.colorName}</strong>
-              </span>
-            </div>
-          </div>
-
-          {/* Selector de talle demo */}
-          <div>
-            <div
-              style={{
-                fontSize: 13,
-                fontWeight: 600,
-                marginBottom: 6,
-              }}
-            >
-              Seleccioná tu talle
-            </div>
-            <div
-              style={{
-                display: "flex",
-                gap: 8,
-                flexWrap: "wrap",
-              }}
-            >
-              {garmentOptions.map((g) => {
-                const active = g.id === selectedSizeId;
-                return (
-                  <button
-                    key={g.id}
-                    type="button"
-                    onClick={() => setSelectedSizeId(g.id)}
-                    style={{
-                      minWidth: 40,
-                      padding: "6px 10px",
-                      borderRadius: 999,
-                      border: active
-                        ? "2px solid #111827"
-                        : "1px solid #d1d5db",
-                      background: active ? "#111827" : "#f9fafb",
-                      color: active ? "#f9fafb" : "#111827",
-                      fontSize: 13,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {g.sizeLabel}
-                  </button>
-                );
-              })}
-            </div>
-            <div
-              style={{
-                marginTop: 4,
-                fontSize: 11,
-                color: "#6b7280",
-              }}
-            >
-              Tip: creá tu avatar con <strong>Vesti AI</strong> y validá si este
-              talle es el ideal para vos.
-            </div>
-          </div>
-
-          {/* Botones compra */}
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 8,
-              marginTop: 4,
-            }}
-          >
-            <button
-              type="button"
-              style={{
-                flex: 1,
-                minWidth: 160,
-                padding: "10px 16px",
-                borderRadius: 999,
-                border: "none",
-                background: "#111827",
-                color: "#f9fafb",
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              Agregar al carrito
-            </button>
-            <button
-              type="button"
-              style={{
-                flex: 1,
-                minWidth: 160,
-                padding: "10px 16px",
-                borderRadius: 999,
-                border: "1px solid #d1d5db",
-                background: "#ffffff",
-                color: "#111827",
-                fontSize: 14,
-                fontWeight: 500,
-                cursor: "pointer",
-              }}
-            >
-              Comprar ahora
-            </button>
-          </div>
-
-          {/* Detalles del producto: descripción real Shopify o demo */}
-          <div
-            style={{
-              marginTop: 8,
-              padding: 12,
-              borderRadius: 12,
-              border: "1px solid #e5e7eb",
-              background: "#f9fafb",
-              fontSize: 12,
-              color: "#4b5563",
-            }}
-          >
-            <strong>Detalles del producto</strong>
-            {hasRealDescription ? (
-              <div
-                style={{
-                  marginTop: 4,
-                  fontSize: 12,
-                  color: "#4b5563",
-                  lineHeight: 1.5,
-                }}
-                dangerouslySetInnerHTML={{
-                  __html: fullProductFromParent!.descriptionHtml!,
-                }}
-              />
-            ) : (
-              <ul
-                style={{
-                  margin: "4px 0 0",
-                  paddingLeft: 16,
-                }}
-              >
-                <li>Relleno sintético liviano, ideal para media estación.</li>
-                <li>Capucha desmontable y cierres termosellados.</li>
-                <li>Fit regular unisex, pensado para uso urbano.</li>
-              </ul>
-            )}
-          </div>
-        </div>
-
+              {!(isEmbedded && isSizeGuideMode) && (
+                        {/* Columna izquierda: imagen, precio, talles, detalles */}
+                        <div
+                          style={{
+                            flex: 1,
+                            minWidth: 280,
+                            maxWidth: 520,
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 16,
+                          }}
+                        >
+                          {/* Imagen */}
+                          <div
+                            style={{
+                              borderRadius: 20,
+                              overflow: "hidden",
+                              border: "1px solid #e5e7eb",
+                              background: "#f9fafb",
+                            }}
+                          >
+                            <img
+                              src={displayProduct.imageUrl}
+                              alt={displayProduct.name}
+                              style={{
+                                width: "100%",
+                                height: "auto",
+                                display: "block",
+                                objectFit: "cover",
+                              }}
+                            />
+                          </div>
+                
+                          {/* Precio + color */}
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              flexWrap: "wrap",
+                              gap: 8,
+                            }}
+                          >
+                            <div>
+                              <div
+                                style={{
+                                  fontSize: 22,
+                                  fontWeight: 700,
+                                  color: "#111827",
+                                }}
+                              >
+                                {priceFormatted}
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: 12,
+                                  color: "#6b7280",
+                                }}
+                              >
+                                3 cuotas sin interés pagando con tarjeta
+                              </div>
+                            </div>
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 8,
+                              }}
+                            >
+                              <div
+                                style={{
+                                  width: 20,
+                                  height: 20,
+                                  borderRadius: "999px",
+                                  background:
+                                    "radial-gradient(circle at 30% 30%, #4ade80, #065f46)",
+                                  border: "1px solid #e5e7eb",
+                                }}
+                              />
+                              <span
+                                style={{
+                                  fontSize: 12,
+                                  color: "#374151",
+                                }}
+                              >
+                                Color: <strong>{displayProduct.colorName}</strong>
+                              </span>
+                            </div>
+                          </div>
+                
+                          {/* Selector de talle demo */}
+                          <div>
+                            <div
+                              style={{
+                                fontSize: 13,
+                                fontWeight: 600,
+                                marginBottom: 6,
+                              }}
+                            >
+                              Seleccioná tu talle
+                            </div>
+                            <div
+                              style={{
+                                display: "flex",
+                                gap: 8,
+                                flexWrap: "wrap",
+                              }}
+                            >
+                              {garmentOptions.map((g) => {
+                                const active = g.id === selectedSizeId;
+                                return (
+                                  <button
+                                    key={g.id}
+                                    type="button"
+                                    onClick={() => setSelectedSizeId(g.id)}
+                                    style={{
+                                      minWidth: 40,
+                                      padding: "6px 10px",
+                                      borderRadius: 999,
+                                      border: active
+                                        ? "2px solid #111827"
+                                        : "1px solid #d1d5db",
+                                      background: active ? "#111827" : "#f9fafb",
+                                      color: active ? "#f9fafb" : "#111827",
+                                      fontSize: 13,
+                                      fontWeight: 600,
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    {g.sizeLabel}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <div
+                              style={{
+                                marginTop: 4,
+                                fontSize: 11,
+                                color: "#6b7280",
+                              }}
+                            >
+                              Tip: creá tu avatar con <strong>Vesti AI</strong> y validá si este
+                              talle es el ideal para vos.
+                            </div>
+                          </div>
+                
+                          {/* Botones compra */}
+                          <div
+                            style={{
+                              display: "flex",
+                              flexWrap: "wrap",
+                              gap: 8,
+                              marginTop: 4,
+                            }}
+                          >
+                            <button
+                              type="button"
+                              style={{
+                                flex: 1,
+                                minWidth: 160,
+                                padding: "10px 16px",
+                                borderRadius: 999,
+                                border: "none",
+                                background: "#111827",
+                                color: "#f9fafb",
+                                fontSize: 14,
+                                fontWeight: 600,
+                                cursor: "pointer",
+                              }}
+                            >
+                              Agregar al carrito
+                            </button>
+                            <button
+                              type="button"
+                              style={{
+                                flex: 1,
+                                minWidth: 160,
+                                padding: "10px 16px",
+                                borderRadius: 999,
+                                border: "1px solid #d1d5db",
+                                background: "#ffffff",
+                                color: "#111827",
+                                fontSize: 14,
+                                fontWeight: 500,
+                                cursor: "pointer",
+                              }}
+                            >
+                              Comprar ahora
+                            </button>
+                          </div>
+                
+                          {/* Detalles del producto: descripción real Shopify o demo */}
+                          <div
+                            style={{
+                              marginTop: 8,
+                              padding: 12,
+                              borderRadius: 12,
+                              border: "1px solid #e5e7eb",
+                              background: "#f9fafb",
+                              fontSize: 12,
+                              color: "#4b5563",
+                            }}
+                          >
+                            <strong>Detalles del producto</strong>
+                            {hasRealDescription ? (
+                              <div
+                                style={{
+                                  marginTop: 4,
+                                  fontSize: 12,
+                                  color: "#4b5563",
+                                  lineHeight: 1.5,
+                                }}
+                                dangerouslySetInnerHTML={{
+                                  __html: fullProductFromParent!.descriptionHtml!,
+                                }}
+                              />
+                            ) : (
+                              <ul
+                                style={{
+                                  margin: "4px 0 0",
+                                  paddingLeft: 16,
+                                }}
+                              >
+                                <li>Relleno sintético liviano, ideal para media estación.</li>
+                                <li>Capucha desmontable y cierres termosellados.</li>
+                                <li>Fit regular unisex, pensado para uso urbano.</li>
+                              </ul>
+                            )}
+                          </div>
+                        </div>
+                
+              )}
         {/* Columna derecha: Vesti AI */}
         <div
           style={{
