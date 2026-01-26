@@ -444,7 +444,7 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
 
     const scoreFor = (g: DemoGarment) => {
       const fit = computeFit(perfil, g);
-      const rec = makeRecommendation(fit);
+      const rec = makeRecommendation({ category: effectiveCategory, garment: g, fit });
 
       let penalty = 0;
 
