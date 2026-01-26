@@ -465,11 +465,11 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
         const lengths = Array.isArray((fit as any)?.lengths) ? (fit as any).lengths : [];
 
         for (const wz of widths) {
-          if (!wz || !zonesAllowed.includes(wz.zone)) continue;
+          if (!wz || !zonesAllowed.has(normalizeZoneKey(wz.zone))) continue;
           score += statusPenalty(wz.status);
         }
         for (const lz of lengths) {
-          if (!lz || !zonesAllowed.includes(lz.zone)) continue;
+          if (!lz || !zonesAllowed.has(normalizeZoneKey(lz.zone))) continue;
           score += statusPenalty(lz.status);
         }
 
@@ -673,7 +673,7 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
     const euFromFoot = mapFootToEuSize(Number((perfil as any).pieLargo ?? 0));
     const talleSugerido = isShoes
       ? String(euFromFoot ?? talleActual)
-      : lastRec?.tallaSugerida ?? talleActual;
+      : (recommendedGarment?.sizeLabel ?? overlayGarment?.sizeLabel ?? "—");
 
     const mensaje = isShoes
       ? buildMensaje(String(lastRec?.tag ?? "OK"), effectiveCategory)
