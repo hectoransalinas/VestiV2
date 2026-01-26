@@ -3,8 +3,8 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { VestiProductEmbed } from "../embed/VestiProductEmbed";
-import { computeFit, makeRecommendation } from "../motor/fitEngine";
 import type { GarmentCategory, Garment, Measurements } from "../motor/fitEngine";
+import { computeFit, makeRecommendation, normalizeCategory } from "../motor/fitEngine";
 
 /**
  * Demo de ficha de producto integrada con Vesti AI.
@@ -406,7 +406,82 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
     [garmentOptions, selectedSizeId]
   );
 
-  const buildMensaje = (tag: string, cat: GarmentCategory): string => {
+  
+  // =========================
+  // Recomendación IDEAL (independiente del talle seleccionado)
+  // - Se calcula evaluando TODAS las variantes (garmentOptions) contra el perfil actual.
+  // - NO toca el motor: usa computeFit + makeRecommendation.
+  // =========================
+  const recommendedPick = useMemo(() => {
+    if (!Array.isArray(garmentOptions) || garmentOptions.length === 0) return null;
+
+    const canon = normalizeCategory(effectiveCategory);
+
+    const decisive = (() => {
+      if (canon === "pants") {
+        return { widths: ["cintura"] as const, lengths: ["largoPierna"] as const };
+      }
+      if (canon === "shoes") {
+        return { widths: [] as const, lengths: ["pieLargo"] as const };
+      }
+      // upper
+      return { widths: ["hombros", "pecho"] as const, lengths: ["largoTorso"] as const };
+    })();
+
+    const tagBaseScore = (tag: string) => {
+      switch (tag) {
+        case "OK":
+          return 0;
+        case "CHECK_LENGTH":
+          return 1;
+        case "SIZE_DOWN":
+        case "SIZE_UP":
+          return 2;
+        default:
+          return 3;
+      }
+    };
+
+    const scoreFor = (g: DemoGarment) => {
+      const fit = computeFit(perfil, g);
+      const rec = makeRecommendation(fit);
+
+      let penalty = 0;
+
+      // Ancho (decisorio)
+      for (const z of decisive.widths) {
+        const zw = fit.widths?.find((x) => x.zone === z);
+        if (!zw) continue;
+        const abs = Math.abs(Number(zw.delta ?? 0));
+        if (zw.status === "Ajustado") penalty += 1000 + abs * 50;
+        else if (zw.status === "Holgado") penalty += 20 + abs * 2;
+        else penalty += abs;
+      }
+
+      // Largo (warning, no cambia talle, pero sí afecta score)
+      for (const z of decisive.lengths) {
+        const zl = fit.lengths?.find((x) => x.zone === z);
+        if (!zl) continue;
+        const abs = Math.abs(Number(zl.delta ?? 0));
+        if (zl.status === "Corto") penalty += 80 + abs * 5;
+        else if (zl.status === "Largo") penalty += 40 + abs * 3;
+        else penalty += abs;
+      }
+
+      const total = tagBaseScore(String(rec.tag)) * 200 + penalty;
+      return { g, fit, rec, total };
+    };
+
+    let best = scoreFor(garmentOptions[0]);
+    for (let i = 1; i < garmentOptions.length; i++) {
+      const cand = scoreFor(garmentOptions[i]);
+      if (cand.total < best.total) best = cand;
+    }
+
+    return best;
+  }, [garmentOptions, perfil, effectiveCategory]);
+
+const buildMensaje = (tag: string, cat: GarmentCategory): string => {
     const c = String(cat ?? "").toLowerCase();
 
     // Copy específica por categoría (prioridad: shoes/pants, luego upper)
@@ -494,21 +569,9 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
 
     let tallaSugerida = tallaActual;
 
-    const currentId =
-      (garment && (garment as DemoGarment).id) || selectedGarment?.id;
-    const currentIndex = garmentOptions.findIndex((g) => String(g.id) === String(currentId));
-
-    if (currentIndex >= 0) {
-      if (
-        tagNormalizado === "SIZE_UP" &&
-        currentIndex < garmentOptions.length - 1
-      ) {
-        tallaSugerida = garmentOptions[currentIndex + 1].sizeLabel;
-      } else if (tagNormalizado === "SIZE_DOWN" && currentIndex > 0) {
-        tallaSugerida = garmentOptions[currentIndex - 1].sizeLabel;
-      }
-    }
-
+    // En modo "selector de talle", NO movemos la recomendación en base al talle seleccionado.
+    // La recomendación ideal se calcula aparte comparando el perfil contra TODAS las variantes.
+    // Acá, este callback solo actualiza el estado del calce del talle SELECCIONADO (chips + overlays).
     const mensaje = buildMensaje(tagNormalizado, effectiveCategory);
 
     setLastRec({
@@ -582,103 +645,18 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
   }, [effectiveCategory]);
 
   
-  
   // =========================
-  // SIZEGUIDE — elegir "talle ideal" evaluando TODAS las variantes con el perfil actual.
-  // - No depende de SIZE_UP/SIZE_DOWN desde un talle base.
-  // - Fuente de verdad: bestGarment (mínimo score) + su recomendación.
-  // - Overlays/chips: se calculan contra el talle "comparar" (selectedSizeId), que el usuario puede elegir.
-  // =========================
-  const bestPick = useMemo(() => {
-    if (!Array.isArray(garmentOptions) || garmentOptions.length === 0) return null;
-
-    const zonesAllowed = getDecisiveZones(effectiveCategory);
-
-    const widthPenalty = (status: any, delta: number) => {
-      const d = Math.abs(Number(delta ?? 0));
-      if (status === "Perfecto") return d;              // cuanto más cerca de 0, mejor
-      if (status === "Holgado") return 15 + d * 2;      // penaliza holgura
-      return 120 + d * 4;                               // "Ajustado" (alto castigo)
-    };
-
-    const lengthPenalty = (status: any, delta: number) => {
-      const d = Math.abs(Number(delta ?? 0));
-      if (status === "Perfecto") return d;
-      return 8 + d * 2; // Largo/Corto: warning
-    };
-
-    const weightForZone = (zoneKey: string) => {
-      const c = String(effectiveCategory).toLowerCase();
-      const z = normalizeZoneKey(zoneKey);
-      // zonas decisorias tienen más peso
-      if (c === "pants") return z === "cintura" ? 6 : 1;
-      if (c === "shoes") return z === "pielargo" ? 6 : 1;
-      // upper
-      if (z === "pecho") return 6;
-      if (z === "hombros") return 5;
-      return 1;
-    };
-
-    let best: null | {
-      garment: DemoGarment;
-      fit: any;
-      rec: any;
-      score: number;
-    } = null;
-
-    for (const g of garmentOptions) {
-      try {
-        const fit = computeFit(perfil as any, g);
-        const rec = makeRecommendation({ category: effectiveCategory, garment: g, fit });
-
-        // Score por zonas permitidas
-        let score = 0;
-
-        for (const w of fit.widths ?? []) {
-          const key = normalizeZoneKey(String(w.zone));
-          if (!zonesAllowed.has(key)) continue;
-          score += widthPenalty(w.status, w.delta) * weightForZone(key);
-        }
-        for (const l of fit.lengths ?? []) {
-          const key = normalizeZoneKey(String(l.zone));
-          if (!zonesAllowed.has(key)) continue;
-          score += lengthPenalty(l.status, l.delta) * weightForZone(key);
-        }
-
-        // Pequeño desempate: preferir tags OK por sobre SIZE_UP/SIZE_DOWN si score similar
-        const tag = String(rec?.tag ?? "OK");
-        if (tag === "OK") score -= 2;
-        if (tag === "CHECK_LENGTH") score -= 1;
-
-        if (!best || score < best.score) {
-          best = { garment: g as DemoGarment, fit, rec, score };
-        }
-      } catch {
-        // si alguna variante viene mal, la ignoramos
-      }
-    }
-
-    return best;
-  }, [garmentOptions, perfil, effectiveCategory]);
-
-// =========================
   // SIZEGUIDE (modo Shopify / iframe)
   // Render limpio tipo "guía de talles" (estilo Adidas/Nike).
   // =========================
   if (isSizeGuideMode) {
-    // "Comparar talle" (overlays/chips) = selectedGarment
-    const talleComparar = selectedGarment?.sizeLabel ?? "—";
+    const talleActual = selectedGarment?.sizeLabel ?? "—";
+    const isShoes = String(effectiveCategory).toLowerCase() === "shoes";
+    const euFromFoot = mapFootToEuSize(Number((perfil as any).pieLargo ?? 0));
+    const talleIdeal = recommendedPick?.g?.sizeLabel ?? talleActual;
 
-    // "Tu talle ideal" = mejor variante (evaluando todas con el perfil actual)
-    const idealGarment = (bestPick?.garment ?? selectedGarment) as DemoGarment | null;
-    const idealSizeLabel = idealGarment?.sizeLabel ?? talleComparar;
+    const mensaje = buildMensaje(String(recommendedPick?.rec?.tag ?? "OK"), effectiveCategory);
 
-    const idealTag = String(bestPick?.rec?.tag ?? "OK");
-    const idealMensaje =
-      String(bestPick?.rec?.message ?? "").trim() ||
-      buildMensaje(idealTag, effectiveCategory);
-
-    // Chips resumen (calce contra el talle que estás comparando)
     const resumen = lastRec?.resumenZonas ?? "";
 
     const chips = resumen
@@ -757,7 +735,33 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
                 background: "#fafafa",
               }}
             >
-              <div
+              
+              {/* Selector de talle base (fuente de verdad para avatar + overlays) */}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                {garmentOptions.map((g) => {
+                  const active = String(g.id) === String(selectedSizeId);
+                  return (
+                    <button
+                      key={String(g.id)}
+                      type="button"
+                      onClick={() => setSelectedSizeId(String(g.id))}
+                      style={{
+                        padding: "6px 10px",
+                        borderRadius: 999,
+                        border: active ? "1px solid #111827" : "1px solid #e5e7eb",
+                        background: active ? "#111827" : "#ffffff",
+                        color: active ? "#ffffff" : "#111827",
+                        fontWeight: 700,
+                        fontSize: 13,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {String(g.sizeLabel ?? "—")}
+                    </button>
+                  );
+                })}
+              </div>
+<div
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
@@ -774,11 +778,11 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
               </div>
 
               <div style={{ fontSize: 54, fontWeight: 800, marginTop: 10, color: "#111827" }}>
-                {idealSizeLabel}
+                {talleIdeal}
               </div>
 
               <div style={{ color: "#374151", marginTop: 6, lineHeight: 1.4 }}>
-                {idealMensaje}
+                {mensaje}
               </div>
 
               <div
@@ -813,37 +817,6 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
                     <div style={{ color: "#6b7280", fontSize: 13 }}>
                       Basado en tus medidas y este producto
                     </div>
-                  </div>
-                </div>
-
-                {/* Comparar con otro talle (afecta SOLO overlays/chips) */}
-                <div style={{ marginTop: 10 }}>
-                  <label style={{ display: "block", fontSize: 12, color: "#6b7280", marginBottom: 6 }}>
-                    Comparar calce con talle
-                  </label>
-                  <select
-                    value={selectedSizeId}
-                    onChange={(e) => setSelectedSizeId(e.target.value)}
-                    style={{
-                      width: "100%",
-                      padding: "10px 12px",
-                      borderRadius: 12,
-                      border: "1px solid #e5e7eb",
-                      background: "#fff",
-                      color: "#111827",
-                      fontWeight: 700,
-                      outline: "none",
-                    }}
-                  >
-                    {garmentOptions.map((g) => (
-                      <option key={String(g.id)} value={String(g.id)}>
-                        {String(g.sizeLabel)}
-                      </option>
-                    ))}
-                  </select>
-                  <div style={{ marginTop: 6, fontSize: 12, color: "#6b7280" }}>
-                    Tu talle ideal es <b style={{ color: "#111827" }}>{idealSizeLabel}</b>. El selector solo sirve para
-                    comparar cómo se verían las bandas en otro talle.
                   </div>
                 </div>
 
