@@ -405,6 +405,24 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
     [garmentOptions, selectedSizeId]
   );
 
+
+  // ✅ En modo sizeguide, los overlays SIEMPRE deben evaluarse contra el talle ideal.
+  // Esta es la "fuente de verdad" para el visor/overlays.
+  const overlayGarment = useMemo(() => {
+    if (!isSizeGuideMode) return selectedGarment;
+
+    const label = String(lastRec?.tallaSugerida ?? "").trim();
+    if (!label) return selectedGarment;
+
+    const found =
+      garmentOptions.find(
+        (g) => String(g.sizeLabel).toLowerCase() === label.toLowerCase()
+      ) ?? null;
+
+    return found ?? selectedGarment;
+  }, [isSizeGuideMode, lastRec?.tallaSugerida, garmentOptions, selectedGarment]);
+
+
   const buildMensaje = (tag: string, cat: GarmentCategory): string => {
     const c = String(cat ?? "").toLowerCase();
 
@@ -510,6 +528,20 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
 
     const mensaje = buildMensaje(tagNormalizado, effectiveCategory);
 
+    // ✅ En modo sizeguide, alineamos la variante evaluada con el talle sugerido
+    // para que overlays + "Tu talle ideal" estén siempre en coherencia.
+    if (isSizeGuideMode && tallaSugerida) {
+      const target = garmentOptions.find(
+        (g) =>
+          String(g.sizeLabel).toLowerCase() ===
+          String(tallaSugerida).toLowerCase()
+      );
+      if (target && String(target.id) !== String(selectedSizeId)) {
+        setSelectedSizeId(String(target.id));
+      }
+    }
+
+
     setLastRec({
       tallaSugerida,
       resumenZonas: resumenZonas || "Aún sin datos de calce.",
@@ -607,9 +639,10 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
       <div
         style={{
           width: "100%",
-          height: "100%",
+          height: "100dvh",
+          overflow: "hidden",
           boxSizing: "border-box",
-          padding: 20,
+          padding: 16,
           fontFamily:
             "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
           background: "#ffffff",
@@ -662,11 +695,13 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
             display: "flex",
             gap: 18,
             alignItems: "stretch",
-            height: "calc(100% - 52px)",
+            height: "calc(100dvh - 74px)",
+            minHeight: 0,
+            overflow: "hidden",
           }}
         >
           {/* Columna izquierda: recomendación */}
-          <div style={{ flex: "0 0 420px", maxWidth: 460, width: "100%" }}>
+          <div style={{ flex: "0 0 380px", maxWidth: 420, width: "100%" }}>
             <div
               style={{
                 border: "1px solid rgba(0,0,0,0.08)",
@@ -878,10 +913,10 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
           </div>
 
           {/* Columna derecha: avatar + overlays */}
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
             {selectedGarment ? (
               <VestiProductEmbed
-                garment={selectedGarment}
+                garment={overlayGarment}
                 category={effectiveCategory}
                 perfilInicial={perfil}
                 onRecomendacion={handleRecomendacion}
