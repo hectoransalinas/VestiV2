@@ -121,7 +121,7 @@ function shoeFitFromFootLength(lenCm: number): {
   };
 }
 
-const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
+const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength, selectedSizeLabel }) => {
   if (!fit && viewMode !== "shoes") return null;
 
   const isTopView = viewMode === "top";
@@ -163,8 +163,12 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
     return null;
   }
 
-  const shoeFit = shoeFitFromFootLength(footLength);
-  const shoeColor = zoneColor(shoeFit.statusKey);
+  // Shoes: rely on fitEngine (pieLargo) so the overlay matches the selected variant.
+const shoeLength = fit?.lengths?.find((l) => l.zone === "pieLargo");
+const shoeStatusLabel = shoeLength?.status ?? "Perfecto";
+const shoeStatusKey =
+  shoeStatusLabel === "Corto" ? "ajustado" : shoeStatusLabel === "Largo" ? "holgado" : "perfecto";
+const shoeColor = zoneColor(shoeStatusKey);
 
   return (
     <div
@@ -281,7 +285,7 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
               position: "absolute",
               left: "26%",
               right: "26%",
-              bottom: "2%",
+              bottom: "7%",
               height: "13%",
               borderRadius: 999,
               background: shoeColor,
@@ -308,7 +312,7 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
             }}
           >
             <span style={{ fontWeight: 600 }}>Calce calzado:</span>
-            <span>{shoeFit.label}</span>
+            <span>{String(eu)}</span>
           </div>
         </>
       )}
@@ -650,8 +654,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
       <div
         style={{
           width: "100%",
-          aspectRatio: isSizeGuideMode ? "4 / 5" : "9 / 16",
-          maxHeight: isSizeGuideMode ? "520px" : undefined,
+          aspectRatio: "9 / 16",
           borderRadius: isSizeGuideMode ? 12 : 16,
           overflow: "hidden",
           background: "#f9fafb",
@@ -660,17 +663,10 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
         }}
       >
         {avatarUrl ? (
-          <div
-            style={{
-              width: "100%",
-              height: "100%",
-              transform: isSizeGuideMode ? "scale(0.85)" : "none",
-              transformOrigin: "center top",
-            }}
-          >
+          <>
             <AvatarViewer avatarUrl={avatarUrl} />
             <FitOverlay fit={fit} viewMode={viewMode} footLength={footLength} />
-          </div>
+          </>
         ) : (
           <>
             <iframe
