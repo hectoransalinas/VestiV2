@@ -4,7 +4,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { VestiProductEmbed } from "../embed/VestiProductEmbed";
 import type { GarmentCategory, Garment, Measurements } from "../motor/fitEngine";
-import { computeFit, makeRecommendation, normalizeCategory } from "../motor/fitEngine";
 
 /**
  * Demo de ficha de producto integrada con Vesti AI.
@@ -406,82 +405,7 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
     [garmentOptions, selectedSizeId]
   );
 
-  
-  // =========================
-  // Recomendación IDEAL (independiente del talle seleccionado)
-  // - Se calcula evaluando TODAS las variantes (garmentOptions) contra el perfil actual.
-  // - NO toca el motor: usa computeFit + makeRecommendation.
-  // =========================
-  const recommendedPick = useMemo(() => {
-    if (!Array.isArray(garmentOptions) || garmentOptions.length === 0) return null;
-
-    const canon = normalizeCategory(effectiveCategory);
-
-    const decisive = (() => {
-      if (canon === "pants") {
-        return { widths: ["cintura"] as const, lengths: ["largoPierna"] as const };
-      }
-      if (canon === "shoes") {
-        return { widths: [] as const, lengths: ["pieLargo"] as const };
-      }
-      // upper
-      return { widths: ["hombros", "pecho"] as const, lengths: ["largoTorso"] as const };
-    })();
-
-    const tagBaseScore = (tag: string) => {
-      switch (tag) {
-        case "OK":
-          return 0;
-        case "CHECK_LENGTH":
-          return 1;
-        case "SIZE_DOWN":
-        case "SIZE_UP":
-          return 2;
-        default:
-          return 3;
-      }
-    };
-
-    const scoreFor = (g: DemoGarment) => {
-      const fit = computeFit(perfil, g);
-      const rec = makeRecommendation({ category: effectiveCategory, garment: g, fit });
-
-      let penalty = 0;
-
-      // Ancho (decisorio)
-      for (const z of decisive.widths) {
-        const zw = fit.widths?.find((x) => x.zone === z);
-        if (!zw) continue;
-        const abs = Math.abs(Number(zw.delta ?? 0));
-        if (zw.status === "Ajustado") penalty += 1000 + abs * 50;
-        else if (zw.status === "Holgado") penalty += 20 + abs * 2;
-        else penalty += abs;
-      }
-
-      // Largo (warning, no cambia talle, pero sí afecta score)
-      for (const z of decisive.lengths) {
-        const zl = fit.lengths?.find((x) => x.zone === z);
-        if (!zl) continue;
-        const abs = Math.abs(Number(zl.delta ?? 0));
-        if (zl.status === "Corto") penalty += 80 + abs * 5;
-        else if (zl.status === "Largo") penalty += 40 + abs * 3;
-        else penalty += abs;
-      }
-
-      const total = tagBaseScore(String(rec.tag)) * 200 + penalty;
-      return { g, fit, rec, total };
-    };
-
-    let best = scoreFor(garmentOptions[0]);
-    for (let i = 1; i < garmentOptions.length; i++) {
-      const cand = scoreFor(garmentOptions[i]);
-      if (cand.total < best.total) best = cand;
-    }
-
-    return best;
-  }, [garmentOptions, perfil, effectiveCategory]);
-
-const buildMensaje = (tag: string, cat: GarmentCategory): string => {
+  const buildMensaje = (tag: string, cat: GarmentCategory): string => {
     const c = String(cat ?? "").toLowerCase();
 
     // Copy específica por categoría (prioridad: shoes/pants, luego upper)
@@ -569,9 +493,21 @@ const buildMensaje = (tag: string, cat: GarmentCategory): string => {
 
     let tallaSugerida = tallaActual;
 
-    // En modo "selector de talle", NO movemos la recomendación en base al talle seleccionado.
-    // La recomendación ideal se calcula aparte comparando el perfil contra TODAS las variantes.
-    // Acá, este callback solo actualiza el estado del calce del talle SELECCIONADO (chips + overlays).
+    const currentId =
+      (garment && (garment as DemoGarment).id) || selectedGarment?.id;
+    const currentIndex = garmentOptions.findIndex((g) => String(g.id) === String(currentId));
+
+    if (currentIndex >= 0) {
+      if (
+        tagNormalizado === "SIZE_UP" &&
+        currentIndex < garmentOptions.length - 1
+      ) {
+        tallaSugerida = garmentOptions[currentIndex + 1].sizeLabel;
+      } else if (tagNormalizado === "SIZE_DOWN" && currentIndex > 0) {
+        tallaSugerida = garmentOptions[currentIndex - 1].sizeLabel;
+      }
+    }
+
     const mensaje = buildMensaje(tagNormalizado, effectiveCategory);
 
     setLastRec({
@@ -653,15 +589,37 @@ const buildMensaje = (tag: string, cat: GarmentCategory): string => {
     const talleActual = selectedGarment?.sizeLabel ?? "—";
     const isShoes = String(effectiveCategory).toLowerCase() === "shoes";
     const euFromFoot = mapFootToEuSize(Number((perfil as any).pieLargo ?? 0));
-    const talleIdeal = recommendedPick?.g?.sizeLabel ?? talleActual;
+    const talleSugerido = isShoes
+      ? String(euFromFoot ?? talleActual)
+      : lastRec?.tallaSugerida ?? talleActual;
 
-    const mensaje = buildMensaje(String(recommendedPick?.rec?.tag ?? "OK"), effectiveCategory);
+    const mensaje = isShoes
+      ? buildMensaje(String(lastRec?.tag ?? "OK"), effectiveCategory)
+      : lastRec?.mensaje ?? "Cargando recomendación…";
 
     const resumen = lastRec?.resumenZonas ?? "";
 
     const chips = resumen
       ? resumen.split(" · ").filter(Boolean)
       : [];
+
+    const chipTone = (statusRaw: string) => {
+      const s = String(statusRaw || "").trim();
+      const isOk = s === "Perfecto";
+      const isTight = s === "Ajustado" || s === "Justo";
+      const isLoose = s === "Holgado";
+      const isWarn = s === "Largo" || s === "Corto";
+      if (isOk) {
+        return { bg: "rgba(22, 163, 74, 0.10)", border: "rgba(22, 163, 74, 0.35)", text: "#14532d" };
+      }
+      if (isTight) {
+        return { bg: "rgba(220, 38, 38, 0.10)", border: "rgba(220, 38, 38, 0.35)", text: "#7f1d1d" };
+      }
+      if (isLoose || isWarn) {
+        return { bg: "rgba(234, 179, 8, 0.12)", border: "rgba(234, 179, 8, 0.40)", text: "#78350f" };
+      }
+      return { bg: "rgba(0,0,0,0.04)", border: "rgba(0,0,0,0.06)", text: "#111827" };
+    };
 
     return (
       <div
@@ -735,33 +693,7 @@ const buildMensaje = (tag: string, cat: GarmentCategory): string => {
                 background: "#fafafa",
               }}
             >
-              
-              {/* Selector de talle base (fuente de verdad para avatar + overlays) */}
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-                {garmentOptions.map((g) => {
-                  const active = String(g.id) === String(selectedSizeId);
-                  return (
-                    <button
-                      key={String(g.id)}
-                      type="button"
-                      onClick={() => setSelectedSizeId(String(g.id))}
-                      style={{
-                        padding: "6px 10px",
-                        borderRadius: 999,
-                        border: active ? "1px solid #111827" : "1px solid #e5e7eb",
-                        background: active ? "#111827" : "#ffffff",
-                        color: active ? "#ffffff" : "#111827",
-                        fontWeight: 700,
-                        fontSize: 13,
-                        cursor: "pointer",
-                      }}
-                    >
-                      {String(g.sizeLabel ?? "—")}
-                    </button>
-                  );
-                })}
-              </div>
-<div
+              <div
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
@@ -778,7 +710,7 @@ const buildMensaje = (tag: string, cat: GarmentCategory): string => {
               </div>
 
               <div style={{ fontSize: 54, fontWeight: 800, marginTop: 10, color: "#111827" }}>
-                {talleIdeal}
+                {talleSugerido}
               </div>
 
               <div style={{ color: "#374151", marginTop: 6, lineHeight: 1.4 }}>
@@ -822,21 +754,28 @@ const buildMensaje = (tag: string, cat: GarmentCategory): string => {
 
                 {chips.length > 0 && (
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
-                    {chips.map((c, i) => (
-                      <span
-                        key={i}
-                        style={{
-                          fontSize: 12,
-                          padding: "6px 10px",
-                          borderRadius: 999,
-                          background: "rgba(0,0,0,0.04)",
-                          border: "1px solid rgba(0,0,0,0.06)",
-                          color: "#111827",
-                        }}
-                      >
-                        {c}
-                      </span>
-                    ))}
+                    {chips.map((c, i) => {
+                      const [rawZone, rawStatus] = String(c).split(":");
+                      const zone = String(rawZone || "").trim();
+                      const status = String(rawStatus || "").trim();
+                      const tone = chipTone(status);
+                      return (
+                        <span
+                          key={i}
+                          style={{
+                            fontSize: 12,
+                            padding: "6px 10px",
+                            borderRadius: 999,
+                            background: tone.bg,
+                            border: `1px solid ${tone.border}`,
+                            color: tone.text,
+                            fontWeight: 600,
+                          }}
+                        >
+                          {zone}: {status || c}
+                        </span>
+                      );
+                    })}
                   </div>
                 )}
               </div>

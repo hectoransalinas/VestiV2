@@ -650,7 +650,8 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
       <div
         style={{
           width: "100%",
-          aspectRatio: "9 / 16",
+          aspectRatio: isSizeGuideMode ? "4 / 5" : "9 / 16",
+          maxHeight: isSizeGuideMode ? "520px" : undefined,
           borderRadius: isSizeGuideMode ? 12 : 16,
           overflow: "hidden",
           background: "#f9fafb",
@@ -659,10 +660,17 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
         }}
       >
         {avatarUrl ? (
-          <>
+          <div
+            style={{
+              width: "100%",
+              height: "100%",
+              transform: isSizeGuideMode ? "scale(0.85)" : "none",
+              transformOrigin: "center top",
+            }}
+          >
             <AvatarViewer avatarUrl={avatarUrl} />
             <FitOverlay fit={fit} viewMode={viewMode} footLength={footLength} />
-          </>
+          </div>
         ) : (
           <>
             <iframe
