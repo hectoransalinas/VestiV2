@@ -3,6 +3,10 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { VestiProductEmbed } from "../embed/VestiProductEmbed";
+import {
+  computeFit,
+  makeRecommendation,
+} from "../motor/fitEngine";
 import type { GarmentCategory, Garment, Measurements } from "../motor/fitEngine";
 
 /**
@@ -406,22 +410,82 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
   );
 
 
-  // ✅ En modo sizeguide, los overlays SIEMPRE deben evaluarse contra el talle ideal.
-  // Esta es la "fuente de verdad" para el visor/overlays.
-  const overlayGarment = useMemo(() => {
-    if (!isSizeGuideMode) return selectedGarment;
+  // ✅ En mode=sizeguide, el widget y los overlays NO deben usar un talle "seleccionado"
+  // (que puede quedar en el primero del array por default), sino el talle "ideal"
+  // calculado a partir del perfil + todas las variantes disponibles.
+  const recommendedGarment = useMemo(() => {
+    if (!garmentOptions || garmentOptions.length === 0) return null;
 
-    const label = String(lastRec?.tallaSugerida ?? "").trim();
-    if (!label) return selectedGarment;
+    // Scoring simple y estable: preferimos rec OK; luego warning de largo; luego cambios de talle.
+    const tagScore = (tag?: string) => {
+      switch (tag) {
+        case "OK":
+          return 0;
+        case "CHECK_LENGTH":
+          return 1;
+        case "SIZE_UP":
+        case "SIZE_DOWN":
+          return 2;
+        default:
+          return 3;
+      }
+    };
 
-    const found =
-      garmentOptions.find(
-        (g) => String(g.sizeLabel).toLowerCase() === label.toLowerCase()
-      ) ?? null;
+    const statusPenalty = (status?: string) => {
+      switch (status) {
+        case "Perfecto":
+          return 0;
+        case "Holgado":
+        case "Largo":
+        case "Corto":
+          return 1;
+        case "Justo":
+        case "Ajustado":
+          return 2;
+        default:
+          return 1;
+      }
+    };
 
-    return found ?? selectedGarment;
-  }, [isSizeGuideMode, lastRec?.tallaSugerida, garmentOptions, selectedGarment]);
+    let best: { g: any; score: number } | null = null;
 
+    for (const g of garmentOptions) {
+      try {
+        const fit = computeFit(perfil as any, g as any);
+        const rec = makeRecommendation({
+          category: effectiveCategory,
+          garment: g as any,
+          fit,
+        });
+
+        let score = tagScore((rec as any)?.tag);
+
+        // Penalizar zonas permitidas (solo para desempatar)
+        const widths = Array.isArray((fit as any)?.widths) ? (fit as any).widths : [];
+        const lengths = Array.isArray((fit as any)?.lengths) ? (fit as any).lengths : [];
+
+        for (const wz of widths) {
+          if (!wz || !zonesAllowed.includes(wz.zone)) continue;
+          score += statusPenalty(wz.status);
+        }
+        for (const lz of lengths) {
+          if (!lz || !zonesAllowed.includes(lz.zone)) continue;
+          score += statusPenalty(lz.status);
+        }
+
+        if (!best || score < best.score) {
+          best = { g, score };
+        }
+      } catch {
+        // si una variante viene incompleta, la ignoramos
+      }
+    }
+
+    return best?.g ?? garmentOptions[0] ?? null;
+  }, [garmentOptions, perfil, effectiveCategory, zonesAllowed]);
+
+  // Fuente de verdad del widget/overlays según modo.
+  const overlayGarment = isSizeGuideMode ? recommendedGarment : selectedGarment;
 
   const buildMensaje = (tag: string, cat: GarmentCategory): string => {
     const c = String(cat ?? "").toLowerCase();
@@ -528,20 +592,6 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
 
     const mensaje = buildMensaje(tagNormalizado, effectiveCategory);
 
-    // ✅ En modo sizeguide, alineamos la variante evaluada con el talle sugerido
-    // para que overlays + "Tu talle ideal" estén siempre en coherencia.
-    if (isSizeGuideMode && tallaSugerida) {
-      const target = garmentOptions.find(
-        (g) =>
-          String(g.sizeLabel).toLowerCase() ===
-          String(tallaSugerida).toLowerCase()
-      );
-      if (target && String(target.id) !== String(selectedSizeId)) {
-        setSelectedSizeId(String(target.id));
-      }
-    }
-
-
     setLastRec({
       tallaSugerida,
       resumenZonas: resumenZonas || "Aún sin datos de calce.",
@@ -618,7 +668,7 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
   // Render limpio tipo "guía de talles" (estilo Adidas/Nike).
   // =========================
   if (isSizeGuideMode) {
-    const talleActual = selectedGarment?.sizeLabel ?? "—";
+    const talleActual = overlayGarment?.sizeLabel ?? "—";
     const isShoes = String(effectiveCategory).toLowerCase() === "shoes";
     const euFromFoot = mapFootToEuSize(Number((perfil as any).pieLargo ?? 0));
     const talleSugerido = isShoes
@@ -639,10 +689,9 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
       <div
         style={{
           width: "100%",
-          height: "100dvh",
-          overflow: "hidden",
+          height: "100%",
           boxSizing: "border-box",
-          padding: 16,
+          padding: 20,
           fontFamily:
             "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
           background: "#ffffff",
@@ -695,13 +744,11 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
             display: "flex",
             gap: 18,
             alignItems: "stretch",
-            height: "calc(100dvh - 74px)",
-            minHeight: 0,
-            overflow: "hidden",
+            height: "calc(100% - 52px)",
           }}
         >
           {/* Columna izquierda: recomendación */}
-          <div style={{ flex: "0 0 380px", maxWidth: 420, width: "100%" }}>
+          <div style={{ flex: "0 0 420px", maxWidth: 460, width: "100%" }}>
             <div
               style={{
                 border: "1px solid rgba(0,0,0,0.08)",
@@ -913,8 +960,8 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
           </div>
 
           {/* Columna derecha: avatar + overlays */}
-          <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
-            {selectedGarment ? (
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {overlayGarment ? (
               <VestiProductEmbed
                 garment={overlayGarment}
                 category={effectiveCategory}
@@ -1308,9 +1355,9 @@ return (
             </div>
           </div>
 
-          {selectedGarment ? (
+          {overlayGarment ? (
           <VestiProductEmbed
-            garment={selectedGarment}
+            garment={overlayGarment}
             category={effectiveCategory}
             onRecomendacion={handleRecomendacion}
           />
