@@ -93,7 +93,8 @@ function shoeFitFromFootLength(lenCm: number): {
     return { label: "Sin datos", statusKey: "Holgado" };
   }
 
-  const eu = mapFootToEuSize(lenCm);
+  // IMPORTANT: evitamos usar la variable "eu" para prevenir choques raros con bundles/minificación.
+  const euSize = mapFootToEuSize(lenCm);
 
   let statusKey: "Perfecto" | "Ajustado" | "Holgado";
   if (lenCm < 23) {
@@ -111,17 +112,17 @@ function shoeFitFromFootLength(lenCm: number): {
       ? "Corto"
       : "Largo";
 
-  if (!eu) {
+  if (!euSize) {
     return { label: statusText, statusKey };
   }
 
   return {
-    label: `${eu} (${statusText})`,
+    label: `${euSize} (${statusText})`,
     statusKey,
   };
 }
 
-const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength, selectedSizeLabel }) => {
+const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
   if (!fit && viewMode !== "shoes") return null;
 
   const isTopView = viewMode === "top";
@@ -163,12 +164,8 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength, selecte
     return null;
   }
 
-  // Shoes: rely on fitEngine (pieLargo) so the overlay matches the selected variant.
-const shoeLength = fit?.lengths?.find((l) => l.zone === "pieLargo");
-const shoeStatusLabel = shoeLength?.status ?? "Perfecto";
-const shoeStatusKey =
-  shoeStatusLabel === "Corto" ? "ajustado" : shoeStatusLabel === "Largo" ? "holgado" : "perfecto";
-const shoeColor = zoneColor(shoeStatusKey);
+  const shoeFit = shoeFitFromFootLength(footLength);
+  const shoeColor = zoneColor(shoeFit.statusKey);
 
   return (
     <div
@@ -285,7 +282,7 @@ const shoeColor = zoneColor(shoeStatusKey);
               position: "absolute",
               left: "26%",
               right: "26%",
-              bottom: "7%",
+              bottom: "2%",
               height: "13%",
               borderRadius: 999,
               background: shoeColor,
@@ -312,7 +309,7 @@ const shoeColor = zoneColor(shoeStatusKey);
             }}
           >
             <span style={{ fontWeight: 600 }}>Calce calzado:</span>
-            <span>{String(eu)}</span>
+            <span>{shoeFit.label}</span>
           </div>
         </>
       )}
