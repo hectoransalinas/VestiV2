@@ -693,6 +693,36 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
                 background: "#fafafa",
               }}
             >
+              {/* Selector de talle (talle actual) */}
+              {garmentOptions.length > 1 && (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                  {garmentOptions.map((g) => {
+                    const active = String(g.id) === String(selectedSizeId);
+                    return (
+                      <button
+                        key={String(g.id)}
+                        type="button"
+                        onClick={() => setSelectedSizeId(String(g.id))}
+                        style={{
+                          minWidth: 38,
+                          padding: "6px 10px",
+                          borderRadius: 999,
+                          border: active ? "2px solid #111827" : "1px solid #d1d5db",
+                          background: active ? "#111827" : "#ffffff",
+                          color: active ? "#ffffff" : "#111827",
+                          fontWeight: 800,
+                          cursor: "pointer",
+                        }}
+                        aria-pressed={active}
+                        title={`Talle ${g.sizeLabel}`}
+                      >
+                        {g.sizeLabel}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
               <div
                 style={{
                   display: "inline-flex",
