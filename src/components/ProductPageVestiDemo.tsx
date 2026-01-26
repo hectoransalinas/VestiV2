@@ -3,10 +3,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { VestiProductEmbed } from "../embed/VestiProductEmbed";
-import {
-  computeFit,
-  makeRecommendation,
-} from "../motor/fitEngine";
+import { computeFit, makeRecommendation } from "../motor/fitEngine";
 import type { GarmentCategory, Garment, Measurements } from "../motor/fitEngine";
 
 /**
@@ -409,83 +406,66 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
     [garmentOptions, selectedSizeId]
   );
 
-
-  // ✅ En mode=sizeguide, el widget y los overlays NO deben usar un talle "seleccionado"
-  // (que puede quedar en el primero del array por default), sino el talle "ideal"
-  // calculado a partir del perfil + todas las variantes disponibles.
+  // ✅ En modo sizeguide, elegimos automáticamente el "talle ideal" evaluando TODAS las variantes
+  // contra el perfil actual, y usamos esa misma variante como "fuente de verdad" para overlays + copy.
   const recommendedGarment = useMemo(() => {
+    if (!isSizeGuideMode) return null;
     if (!garmentOptions || garmentOptions.length === 0) return null;
 
-    // Scoring simple y estable: preferimos rec OK; luego warning de largo; luego cambios de talle.
-    const tagScore = (tag?: string) => {
-      switch (tag) {
-        case "OK":
-          return 0;
-        case "CHECK_LENGTH":
-          return 1;
-        case "SIZE_UP":
-        case "SIZE_DOWN":
-          return 2;
-        default:
-          return 3;
-      }
+    // Ranking por tag (OK mejor) + penalidad por deltas en zonas decisorias.
+    const tagRank = (tag?: string) => {
+      const t = String(tag ?? "OK").toUpperCase();
+      if (t === "OK") return 0;
+      if (t === "CHECK_LENGTH") return 1;
+      if (t === "SIZE_UP" || t === "SIZE_DOWN") return 2;
+      return 3;
     };
 
-    const statusPenalty = (status?: string) => {
-      switch (status) {
-        case "Perfecto":
-          return 0;
-        case "Holgado":
-        case "Largo":
-        case "Corto":
-          return 1;
-        case "Justo":
-        case "Ajustado":
-          return 2;
-        default:
-          return 1;
+    const scoreDecisive = (fit: any) => {
+      const cat = String(effectiveCategory ?? "").toLowerCase();
+      if (cat === "pants") {
+        const w = fit?.widths?.find((x: any) => x.zone === "cintura");
+        return Math.abs(Number(w?.delta ?? 0));
       }
+      if (cat === "shoes") {
+        const l = fit?.lengths?.find((x: any) => x.zone === "pieLargo");
+        return Math.abs(Number(l?.delta ?? 0));
+      }
+      // upper
+      const hombros = fit?.widths?.find((x: any) => x.zone === "hombros");
+      const pecho = fit?.widths?.find((x: any) => x.zone === "pecho");
+      // ponderación: pecho un poco más importante
+      return (
+        Math.abs(Number(hombros?.delta ?? 0)) * 1.0 +
+        Math.abs(Number(pecho?.delta ?? 0)) * 1.2
+      );
     };
 
-    let best: { g: any; score: number } | null = null;
+    let best = garmentOptions[0] as any;
+    let bestRank = Number.POSITIVE_INFINITY;
+    let bestScore = Number.POSITIVE_INFINITY;
 
-    for (const g of garmentOptions) {
+    for (const g of garmentOptions as any[]) {
       try {
         const fit = computeFit(perfil as any, g as any);
-        const rec = makeRecommendation({
-          category: effectiveCategory,
-          garment: g as any,
-          fit,
-        });
-
-        let score = tagScore((rec as any)?.tag);
-
-        // Penalizar zonas permitidas (solo para desempatar)
-        const widths = Array.isArray((fit as any)?.widths) ? (fit as any).widths : [];
-        const lengths = Array.isArray((fit as any)?.lengths) ? (fit as any).lengths : [];
-
-        for (const wz of widths) {
-          if (!wz || !zonesAllowed.has(normalizeZoneKey(wz.zone))) continue;
-          score += statusPenalty(wz.status);
+        const rec = makeRecommendation({ category: effectiveCategory as any, garment: g as any, fit });
+        const r = tagRank(rec?.tag);
+        const s = scoreDecisive(fit);
+        if (r < bestRank || (r === bestRank && s < bestScore)) {
+          best = g;
+          bestRank = r;
+          bestScore = s;
         }
-        for (const lz of lengths) {
-          if (!lz || !zonesAllowed.has(normalizeZoneKey(lz.zone))) continue;
-          score += statusPenalty(lz.status);
-        }
-
-        if (!best || score < best.score) {
-          best = { g, score };
-        }
-      } catch {
-        // si una variante viene incompleta, la ignoramos
+      } catch (_e) {
+        // si una variante rompe por datos incompletos, la ignoramos
       }
     }
 
-    return best?.g ?? garmentOptions[0] ?? null;
-  }, [garmentOptions, perfil, effectiveCategory, zonesAllowed]);
+    return best ?? null;
+  }, [isSizeGuideMode, garmentOptions, perfil, effectiveCategory]);
 
-  // Fuente de verdad del widget/overlays según modo.
-  const overlayGarment = isSizeGuideMode ? recommendedGarment : selectedGarment;
+  const overlayGarment = isSizeGuideMode ? (recommendedGarment ?? selectedGarment) : selectedGarment;
+
 
   const buildMensaje = (tag: string, cat: GarmentCategory): string => {
     const c = String(cat ?? "").toLowerCase();
@@ -543,7 +523,7 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
 
     const tallaActual =
       (garment && (garment as DemoGarment).sizeLabel) ||
-      selectedGarment?.sizeLabel ||
+      overlayGarment?.sizeLabel ||
       "—";
 
     const widthsRaw: string[] =
@@ -575,8 +555,13 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
 
     let tallaSugerida = tallaActual;
 
+    // En sizeguide, la recomendación final es la variante elegida como 'talle ideal'
+    if (isSizeGuideMode && overlayGarment) {
+      tallaSugerida = overlayGarment.sizeLabel;
+    }
+
     const currentId =
-      (garment && (garment as DemoGarment).id) || selectedGarment?.id;
+      (garment && (garment as DemoGarment).id) || overlayGarment?.id;
     const currentIndex = garmentOptions.findIndex((g) => String(g.id) === String(currentId));
 
     if (currentIndex >= 0) {
@@ -668,12 +653,12 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
   // Render limpio tipo "guía de talles" (estilo Adidas/Nike).
   // =========================
   if (isSizeGuideMode) {
-    const talleActual = overlayGarment?.sizeLabel ?? "—";
+    const talleActual = selectedGarment?.sizeLabel ?? "—";
     const isShoes = String(effectiveCategory).toLowerCase() === "shoes";
     const euFromFoot = mapFootToEuSize(Number((perfil as any).pieLargo ?? 0));
     const talleSugerido = isShoes
       ? String(euFromFoot ?? talleActual)
-      : (recommendedGarment?.sizeLabel ?? overlayGarment?.sizeLabel ?? "—");
+      : lastRec?.tallaSugerida ?? talleActual;
 
     const mensaje = isShoes
       ? buildMensaje(String(lastRec?.tag ?? "OK"), effectiveCategory)
@@ -1357,7 +1342,7 @@ return (
 
           {overlayGarment ? (
           <VestiProductEmbed
-            garment={overlayGarment}
+            garment={selectedGarment}
             category={effectiveCategory}
             onRecomendacion={handleRecomendacion}
           />
