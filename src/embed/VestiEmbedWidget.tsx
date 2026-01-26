@@ -9,6 +9,28 @@ import {
 } from "../motor/fitEngine";
 import { AvatarViewer } from "../3d/AvatarViewer";
 
+
+// Small safety net: if the 3D viewer crashes (e.g., avatar URL not found), keep the modal usable.
+class ViewerErrorBoundary extends React.Component<
+  { children: React.ReactNode; onError?: (e: unknown) => void },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    this.props.onError?.(error);
+  }
+
+  render() {
+    if (this.state.hasError) return null;
+    return this.props.children as any;
+  }
+}
+
 type VestiEmbedProps = {
   categoria: GarmentCategory;
   prenda: Garment;
@@ -358,7 +380,13 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
   const [user, setUser] = useState<Measurements>(perfilInicial ?? defaultPerfil);
   const [avatarUrl, setAvatarUrl] = useState<string>("");
   const [showCreatorHelp, setShowCreatorHelp] = useState<boolean>(true);
+  const [viewerCrashed, setViewerCrashed] = useState<boolean>(false);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
+
+  useEffect(() => {
+    // If user changes avatar, try rendering again.
+    setViewerCrashed(false);
+  }, [avatarUrl]);
 
   const isSizeGuideMode = useMemo(() => {
     try {
@@ -659,13 +687,32 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
           position: "relative",
         }}
       >
-        {avatarUrl ? (
+        {avatarUrl && !viewerCrashed ? (
           <>
-            <AvatarViewer avatarUrl={avatarUrl} />
+            <ViewerErrorBoundary onError={() => setViewerCrashed(true)}
+              ><AvatarViewer avatarUrl={avatarUrl} /></ViewerErrorBoundary>
             <FitOverlay fit={fit} viewMode={viewMode} footLength={footLength} />
           </>
         ) : (
           <>
+            {viewerCrashed && (
+              <div style={{
+                position: 'absolute',
+                top: 12,
+                left: 12,
+                right: 12,
+                zIndex: 40,
+                background: 'rgba(255,255,255,0.95)',
+                border: '1px solid #e5e7eb',
+                borderRadius: 12,
+                padding: '10px 12px',
+                fontSize: 12,
+                color: '#334155',
+                boxShadow: '0 10px 25px rgba(15,23,42,0.12)',
+              }}>
+                No pudimos cargar el avatar (URL inválida o recurso no encontrado). Probá generar otro avatar.
+              </div>
+            )}
             <iframe
               ref={iframeRef}
               title="Creador de avatar ReadyPlayerMe"
@@ -698,17 +745,17 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
                   }}
                 >
                   <div style={{ fontWeight: 600, marginBottom: 6, fontSize: 13 }}>
-                    Cómo crear tu avatar en 3 pasos
+                    Cómo personalizar tu avatar
                   </div>
                   <ol style={{ margin: 0, paddingLeft: 18, marginBottom: 8 }}>
                     <li>
-                      Tocá el <strong>icono de la persona con pincel</strong> en la barra inferior.
+                      Tocá el <strong>ícono de la persona</strong> (abajo) para abrir el editor.
                     </li>
                     <li>
-                      Luego tocá el <strong>icono de cámara</strong>.
+                      Elegí un estilo/ropa y ajustá los rasgos.
                     </li>
                     <li>
-                      Elegí si querés tomarte una foto o subir una selfie. Cuando termine, tu avatar se va a mostrar automáticamente acá.
+                      Cuando termines, cerrá el editor: tu avatar se va a mostrar automáticamente acá.
                     </li>
                   </ol>
                   <button
