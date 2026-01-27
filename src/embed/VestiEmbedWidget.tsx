@@ -7,7 +7,7 @@ import {
   makeRecommendation,
   FitResult,
 } from "../motor/fitEngine";
-import { MannequinViewer } from "../3d/MannequinViewer";
+import { AvatarViewer } from "../3d/AvatarViewer";
 
 
 // Small safety net: if the 3D viewer crashes (e.g., avatar URL not found), keep the modal usable.
@@ -175,18 +175,10 @@ function shoeOverlayFromFit(fit: any, footLength: number): {
   if (Array.isArray(lengths)) {
     const z = lengths.find((lz) => lz?.zone === "pieLargo");
     const s = z?.status as string | undefined;
-        if (s) {
-      // Aceptamos tanto estados crudos del motor (Corto/Largo) como normalizados para UI (Ajustado/Grande)
+    if (s) {
       if (s === "Perfecto") return { label: "Perfecto", statusKey: "Perfecto" };
-
-      if (s === "Corto" || s === "Ajustado" || s === "Justo") {
-        return { label: "Ajustado", statusKey: "Ajustado" };
-      }
-
-      if (s === "Largo" || s === "Grande" || s === "Holgado") {
-        return { label: "Grande", statusKey: "Holgado" };
-      }
-
+      if (s === "Corto") return { label: "Ajustado", statusKey: "Ajustado" };
+      if (s === "Largo") return { label: "Grande", statusKey: "Holgado" };
       // fallback: si viene algo inesperado, lo mostramos pero en amarillo
       return { label: String(s), statusKey: "Holgado" };
     }
@@ -454,11 +446,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
   onRecomendacion,
 }) => {
   const [user, setUser] = useState<Measurements>(perfilInicial ?? defaultPerfil);
-  const [avatarUrl, setAvatarUrl] = useState<string>("");
-  const [showCreatorHelp, setShowCreatorHelp] = useState<boolean>(true);
-  const [viewerCrashed, setViewerCrashed] = useState<boolean>(false);
-  const iframeRef = useRef<HTMLIFrameElement | null>(null);
-
+        
   useEffect(() => {
     // If user changes avatar, try rendering again.
     setViewerCrashed(false);
@@ -696,33 +684,7 @@ const rec = useMemo(
         fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
       }}
     >
-      {/* Paso a paso (solo modo app/demo) */}
-      {!isSizeGuideMode && (
-        <div style={{ display: "flex", gap: 4, marginBottom: 4, fontSize: 12 }}>
-          <span
-            style={{
-              padding: "4px 8px",
-              borderRadius: 999,
-              border: `1px solid ${chipBorderColor(lz.status)}`,
-              background: creandoAvatar ? "#eef2ff" : "#f9fafb",
-            }}
-          >
-            1 · Creá tu avatar (subí una selfie)
-          </span>
-          <span
-            style={{
-              padding: "4px 8px",
-              borderRadius: 999,
-              border: "1px solid #e5e7eb",
-              background: !creandoAvatar ? "#ecfdf3" : "#f9fafb",
-            }}
-          >
-            2 · Visualizá el calce recomendado
-          </span>
-        </div>
-      )}
-
-      {/* Selector de tipo de prenda (solo modo app/demo; en sizeguide viene desde Shopify) */}
+            {/* Selector de tipo de prenda (solo modo app/demo; en sizeguide viene desde Shopify) */}
       {!isSizeGuideMode && (
         <div style={{ display: "flex", gap: 6, marginBottom: 4, fontSize: 11 }}>
           {([
@@ -766,31 +728,9 @@ const rec = useMemo(
           position: "relative",
         }}
       >
-        {avatarUrl && !viewerCrashed ? (
-          <>
+        {/* Visor interno: mannequin de referencia */}
             <MannequinViewer variant="male" />
             <FitOverlay fit={fitUi} viewMode={viewMode} footLength={footLength} />
-          </>
-        ) : (
-          <>
-            {viewerCrashed && (
-              <div style={{
-                position: 'absolute',
-                top: 12,
-                left: 12,
-                right: 12,
-                zIndex: 40,
-                background: 'rgba(255,255,255,0.95)',
-                border: '1px solid #e5e7eb',
-                borderRadius: 12,
-                padding: '10px 12px',
-                fontSize: 12,
-                color: '#334155',
-                boxShadow: '0 10px 25px rgba(15,23,42,0.12)',
-              }}>
-                No pudimos cargar el avatar (URL inválida o recurso no encontrado). Probá generar otro avatar.
-              </div>
-            )}
             <iframe
               ref={iframeRef}
               title="Creador de avatar ReadyPlayerMe"
@@ -865,42 +805,7 @@ const rec = useMemo(
       {/* Todo lo siguiente es SOLO modo app/demo */}
       {!isSizeGuideMode && (
         <>
-          {/* Campo opcional para pegar o editar la URL manualmente */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={{ fontSize: 11, color: "#6b7280" }}>URL avatar ReadyPlayerMe (.glb)</span>
-            <input
-              type="text"
-              placeholder="Pegá o ajustá la URL .glb de tu avatar"
-              value={avatarUrl}
-              onChange={(e) => setAvatarUrl(e.target.value)}
-              style={{
-                borderRadius: 8,
-                border: "1px solid #e5e7eb",
-                padding: "6px 8px",
-                fontSize: 12,
-              }}
-            />
-          </div>
-
-          {/* Medidas rápidas */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: viewMode === "shoes" ? "1fr" : "1fr 1fr",
-              gap: 8,
-              fontSize: 12,
-            }}
-          >
-            {viewMode === "top" && (
-              <>
-                <Field label="Hombros (cm)" value={user.hombros} onChange={handleChange("hombros")} />
-                <Field label="Pecho (cm)" value={user.pecho} onChange={handleChange("pecho")} />
-                <Field label="Cintura (cm)" value={user.cintura} onChange={handleChange("cintura")} />
-                <Field label="Largo torso (cm)" value={user.largoTorso} onChange={handleChange("largoTorso")} />
-              </>
-            )}
-
-            {viewMode === "bottom" && (
+                      {viewMode === "bottom" && (
               <>
                 <Field label="Cintura (cm)" value={user.cintura} onChange={handleChange("cintura")} />
                 <Field label="Largo pierna (cm)" value={user.largoPierna} onChange={handleChange("largoPierna")} />
