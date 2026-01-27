@@ -18,7 +18,6 @@ type VestiEmbedProps = {
     recommendation: ReturnType<typeof makeRecommendation>;
     user: Measurements;
     garment: Garment;
-
   }) => void;
 };
 
@@ -40,11 +39,11 @@ function zoneColor(status: string): string {
     case "Ajustado":
       return "rgba(220, 38, 38, 0.45)"; // rojo
     case "Holgado":
+    case "Grande":
     default:
       return "rgba(234, 179, 8, 0.45)"; // amarillo
   }
 }
-
 
 function chipBorderColor(status: string): string {
   switch (status) {
@@ -62,15 +61,13 @@ function chipBorderColor(status: string): string {
 
 // Mapeo de zona -> posición vertical (porcentaje sobre alto del visor)
 const widthTopPercent: Record<string, string> = {
-  hombros: "33%", // un poco más abajo
+  hombros: "33%",
   pecho: "44%",
   cintura: "58%",
 };
 
 const lengthBarLayout: Record<string, { top: string; bottom: string }> = {
-  // Barra desde hombro aprox hasta cintura aprox
   largoTorso: { top: "32%", bottom: "42%" },
-  // Barra de pierna: desde cadera / muslo alto hasta tobillo
   largoPierna: { top: "58%", bottom: "10%" },
 };
 
@@ -85,8 +82,6 @@ type OverlayProps = {
 // Mapear largo de pie en cm -> talle EU aproximado (36–45)
 function mapFootToEuSize(lenCm: number): number | null {
   if (!Number.isFinite(lenCm) || lenCm <= 0) return null;
-
-  // Rango orientativo, luego se puede ajustar por marca
   if (lenCm < 23.0) return 36;
   if (lenCm < 23.7) return 37;
   if (lenCm < 24.4) return 38;
@@ -99,7 +94,7 @@ function mapFootToEuSize(lenCm: number): number | null {
   return 45;
 }
 
-// Heurística de calce de calzado en función del largo de pie.
+// Fallback: heurística de calce de calzado en función del largo de pie.
 function shoeFitFromFootLength(lenCm: number): {
   label: string;
   statusKey: "Perfecto" | "Ajustado" | "Holgado";
@@ -108,74 +103,48 @@ function shoeFitFromFootLength(lenCm: number): {
     return { label: "Sin datos", statusKey: "Holgado" };
   }
 
-  // IMPORTANT: evitamos usar la variable "eu" para prevenir choques raros con bundles/minificación.
   const euSize = mapFootToEuSize(lenCm);
 
   let statusKey: "Perfecto" | "Ajustado" | "Holgado";
-  if (lenCm < 23) {
-    statusKey = "Ajustado";
-  } else if (lenCm > 27.5) {
-    statusKey = "Holgado";
-  } else {
-    statusKey = "Perfecto";
-  }
+  if (lenCm < 23) statusKey = "Ajustado";
+  else if (lenCm > 27.5) statusKey = "Holgado";
+  else statusKey = "Perfecto";
 
   const statusText =
-    statusKey === "Perfecto"
-      ? "Perfecto"
-      : statusKey === "Ajustado"
-      ? "Ajustado"
-      : "Grande";
+    statusKey === "Perfecto" ? "Perfecto" : statusKey === "Ajustado" ? "Ajustado" : "Grande";
 
-  if (!euSize) {
-    return { label: statusText, statusKey };
-  }
+  if (!euSize) return { label: statusText, statusKey };
 
-  return {
-    label: `${euSize} (${statusText})`,
-    statusKey,
-  };
+  return { label: `${euSize} (${statusText})`, statusKey };
 }
 
-
 // Si el motor expone la zona "pieLargo" (lengths), la usamos como fuente de verdad.
-// Mapeo de motor -> UI:
-//   Corto   -> Ajustado
-//   Perfecto-> Perfecto
-//   Largo   -> Grande
-function shoeOverlayFromFit(fit: any, footLength: number): {
-  label: string;
-  statusKey: "Perfecto" | "Ajustado" | "Holgado";
-} {
+// Mapeo motor -> UI: Corto->Ajustado, Perfecto->Perfecto, Largo->Grande
+function shoeOverlayFromFit(
+  fit: any,
+  footLength: number
+): { label: string; statusKey: "Perfecto" | "Ajustado" | "Holgado" } {
   const lengths: any = (fit as any)?.lengths;
 
-  // lengths suele ser array: [{ zone: "pieLargo", status: "Corto" | "Perfecto" | "Largo", ...}]
   if (Array.isArray(lengths)) {
     const z = lengths.find((lz) => lz?.zone === "pieLargo");
     const s = z?.status as string | undefined;
-        if (s) {
-      // Aceptamos tanto estados crudos del motor (Corto/Largo) como normalizados para UI (Ajustado/Grande)
-      if (s === "Perfecto") return { label: "Perfecto", statusKey: "Perfecto" };
 
+    if (s) {
+      if (s === "Perfecto") return { label: "Perfecto", statusKey: "Perfecto" };
       if (s === "Corto" || s === "Ajustado" || s === "Justo") {
         return { label: "Ajustado", statusKey: "Ajustado" };
       }
-
       if (s === "Largo" || s === "Grande" || s === "Holgado") {
         return { label: "Grande", statusKey: "Holgado" };
       }
-
-      // fallback: si viene algo inesperado, lo mostramos pero en amarillo
       return { label: String(s), statusKey: "Holgado" };
     }
   }
 
-  // Fallback: si no está la zona, usamos la heurística por largo de pie (compatible con builds viejas)
   return shoeFitFromFootLength(footLength);
 }
 
-// Normalización para UI (sin tocar el motor): mapea labels de shoes para que
-// chips/etiquetas externas (panel izquierdo) y overlays usen el mismo lenguaje.
 function normalizeFitForUi(fit: any): any {
   if (!fit) return fit;
 
@@ -183,21 +152,17 @@ function normalizeFitForUi(fit: any): any {
   if (Array.isArray(lengths)) {
     const nextLengths = lengths.map((lz: any) => {
       if (!lz || lz.zone !== "pieLargo") return lz;
-
       const s = String(lz.status ?? "");
       if (s === "Corto") return { ...lz, status: "Ajustado" };
       if (s === "Largo") return { ...lz, status: "Grande" };
-      // Perfecto queda igual
       return lz;
     });
-
-    // Clonamos el fit para no mutar el resultado del motor.
     return { ...fit, lengths: nextLengths };
   }
 
-  // Si lengths no es array (build rara), lo dejamos intacto.
   return fit;
 }
+
 const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
   if (!fit && viewMode !== "shoes") return null;
 
@@ -207,10 +172,7 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
 
   const widthZones = (fit?.widths ?? []).filter((z) => {
     if (isShoesView) return false;
-    if (isBottomView) {
-      return z.zone === "cintura" || z.zone === "cadera";
-    }
-    // Vista superior
+    if (isBottomView) return z.zone === "cintura" || z.zone === "cadera";
     return z.zone === "hombros" || z.zone === "pecho" || z.zone === "cintura";
   });
 
@@ -221,38 +183,22 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
     lengthZones = [];
   } else if (isBottomView) {
     const leg = rawLengths.find((lz) => lz.zone === "largoPierna");
-    if (leg) {
-      lengthZones = [leg];
-    } else if (rawLengths.length) {
-      const base = rawLengths[0];
-      lengthZones = [{ ...base, zone: "largoPierna" } as typeof base];
-    }
+    if (leg) lengthZones = [leg];
+    else if (rawLengths.length) lengthZones = [{ ...rawLengths[0], zone: "largoPierna" } as any];
   } else if (isTopView) {
     const torso = rawLengths.find((lz) => lz.zone === "largoTorso");
-    if (torso) {
-      lengthZones = [torso];
-    }
+    if (torso) lengthZones = [torso];
   }
 
   const hasShoeOverlay = isShoesView;
 
-  if (!widthZones.length && !lengthZones.length && !hasShoeOverlay) {
-    return null;
-  }
+  if (!widthZones.length && !lengthZones.length && !hasShoeOverlay) return null;
 
   const shoeFit = shoeOverlayFromFit(fit, footLength);
   const shoeColor = zoneColor(shoeFit.statusKey);
 
   return (
-    <div
-      style={{
-        position: "absolute",
-        inset: 0,
-        pointerEvents: "none",
-        display: "block",
-      }}
-    >
-      {/* Bandas horizontales de ancho */}
+    <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
       {widthZones.map((z) => {
         const top = widthTopPercent[z.zone] ?? "45%";
         const color = zoneColor(z.status);
@@ -275,30 +221,21 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
             }}
           >
             <span style={{ fontSize: 10.5, fontWeight: 600, color: "#0f172a" }}>
-              {z.zone.toUpperCase()}
+              {String(z.zone).toUpperCase()}
             </span>
-            <span style={{ fontSize: 10.5, fontWeight: 500, color: "#0f172a" }}>
-              {z.status}
-            </span>
+            <span style={{ fontSize: 10.5, fontWeight: 500, color: "#0f172a" }}>{z.status}</span>
           </div>
         );
       })}
 
-      {/* Indicadores verticales de largo (torso / pierna) */}
       {lengthZones.map((lz) => {
         const layout = lengthBarLayout[lz.zone];
         if (!layout) return null;
         const color = zoneColor(lz.status);
         const shortLabel = lz.zone === "largoTorso" ? "Torso" : "Pierna";
 
-        let chipTop: string;
-        if (lz.zone === "largoTorso") {
-          chipTop = "24%";
-        } else if (lz.zone === "largoPierna") {
-          chipTop = "76%";
-        } else {
-          chipTop = `calc(${layout.top} - 3%)`;
-        }
+        const chipTop =
+          lz.zone === "largoTorso" ? "24%" : lz.zone === "largoPierna" ? "76%" : `calc(${layout.top} - 3%)`;
 
         return (
           <React.Fragment key={lz.zone}>
@@ -334,7 +271,6 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
                 padding: "3px 6px",
                 borderRadius: 999,
                 background: "#f9fafb",
-                border: "none",
                 fontSize: 10,
                 color: "#0f172a",
                 boxShadow: "0 3px 8px rgba(15,23,42,0.22)",
@@ -350,7 +286,6 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
         );
       })}
 
-      {/* Overlay específico para calzado */}
       {hasShoeOverlay && (
         <>
           <div
@@ -375,7 +310,6 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
               padding: "4px 10px",
               borderRadius: 999,
               background: "#f9fafb",
-              border: "none",
               fontSize: 11,
               color: "#0f172a",
               boxShadow: "0 3px 8px rgba(15,23,42,0.22)",
@@ -399,30 +333,6 @@ function viewModeFromCategory(cat: any): ViewMode {
   return "top";
 }
 
-type FieldProps = {
-  label: string;
-  value: number;
-  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  borderless?: boolean;
-};
-
-const Field: React.FC<FieldProps> = ({ label, value, onChange, borderless }) => (
-  <label style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-    <span style={{ fontSize: 11, color: "#6b7280" }}>{label}</span>
-    <input
-      type="number"
-      value={Number.isFinite(value) ? value : ""}
-      onChange={onChange}
-      style={{
-        borderRadius: 8,
-        border: borderless ? "none" : "1px solid #e5e7eb",
-        padding: "6px 8px",
-        fontSize: 12,
-      }}
-    />
-  </label>
-);
-
 // -------------------- Componente principal --------------------
 
 export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
@@ -432,15 +342,6 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
   onRecomendacion,
 }) => {
   const [user, setUser] = useState<Measurements>(perfilInicial ?? defaultPerfil);
-  
-  
-  
-  
-
-  useEffect(() => {
-    // If user changes avatar, try rendering again.
-    setViewerCrashed(false);
-  }, [avatarUrl]);
 
   const isSizeGuideMode = useMemo(() => {
     try {
@@ -450,39 +351,30 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
     }
   }, []);
 
-  // ✅ En modo sizeguide, las medidas viven en el panel izquierdo (fuera del widget)
-  // y entran por `perfilInicial`. El estado `user` se inicializa una sola vez,
-  // por eso hay que sincronizarlo cuando cambian las medidas externas.
+  // En modo sizeguide las medidas pueden venir de afuera
   const lastPerfilKeyRef = useRef<string>("");
   useEffect(() => {
     if (!isSizeGuideMode) return;
     if (!perfilInicial) return;
 
-    // Evitar loops/sets redundantes: generamos una key estable.
     const key = JSON.stringify(perfilInicial);
     if (key === lastPerfilKeyRef.current) return;
     lastPerfilKeyRef.current = key;
 
-    // Merge suave: solo pisamos campos presentes en perfilInicial.
     setUser((prev) => ({ ...prev, ...perfilInicial }));
   }, [isSizeGuideMode, perfilInicial]);
 
   const [viewMode, setViewMode] = useState<ViewMode>(() => viewModeFromCategory(categoria));
-
-  // Mantener viewMode sincronizado cuando llega categoria desde Shopify/embed
   useEffect(() => {
     setViewMode(viewModeFromCategory(categoria));
   }, [categoria]);
 
-  const lastPayloadRef = useRef<string | null>(null);
   const [footLength, setFootLength] = useState<number>(26);
 
   const fit = useMemo(() => computeFit(user, prenda), [user, prenda]);
-
-  
-
   const fitUi = useMemo(() => normalizeFitForUi(fit), [fit]);
-const rec = useMemo(
+
+  const rec = useMemo(
     () =>
       makeRecommendation({
         category: categoria,
@@ -491,55 +383,6 @@ const rec = useMemo(
       }),
     [categoria, prenda, fitUi]
   );
-
-  // Suscribirse a eventos de ReadyPlayerMe
-  useEffect(() => {
-    const listener = (event: MessageEvent) => {
-      if (!event.data) return;
-
-      let data: any = event.data;
-      if (typeof data === "string") {
-        try {
-          data = JSON.parse(data);
-        } catch {
-          return;
-        }
-      }
-
-      if (data.source !== "readyplayerme") return;
-
-      if (data.eventName === "v1.avatar.exported") {
-        const url = data.data?.url;
-        if (url && typeof url === "string") {
-          setAvatarUrl(url);
-          setShowCreatorHelp(false);
-        }
-      }
-    };
-
-    window.addEventListener("message", listener);
-    return () => window.removeEventListener("message", listener);
-  }, []);
-
-  // Enviar mensaje de suscripción al iframe cuando carga
-  useEffect(() => {
-    const iframe = iframeRef.current;
-    if (!iframe) return;
-
-    const handleLoad = () => {
-      iframe.contentWindow?.postMessage(
-        JSON.stringify({
-          target: "readyplayerme",
-          type: "subscribe",
-          eventName: "v1.avatar.exported",
-        }),
-        "*"
-      );
-    };
-
-    iframe.addEventListener("load", handleLoad);
-    return () => iframe.removeEventListener("load", handleLoad);
-  }, []);
 
   // Auto-ajuste de alto cuando se usa dentro de un iframe embebido
   useEffect(() => {
@@ -551,7 +394,7 @@ const rec = useMemo(
         const height = doc.documentElement.scrollHeight || doc.body.scrollHeight || 0;
         window.parent.postMessage({ type: "vesti:resize", height }, "*");
       } catch {
-        // ignorar
+        // ignore
       }
     };
 
@@ -562,7 +405,6 @@ const rec = useMemo(
       const observer = new ResizeObs(() => sendHeight());
       observer.observe(document.body);
       window.addEventListener("load", sendHeight);
-
       return () => {
         observer.disconnect();
         window.removeEventListener("load", sendHeight);
@@ -577,7 +419,8 @@ const rec = useMemo(
     }
   }, []);
 
-  // Notificar hacia afuera (tienda) cuando cambia algo relevante
+  // Notificar hacia afuera cuando cambia algo relevante
+  const lastPayloadRef = useRef<string | null>(null);
   useEffect(() => {
     if (!onRecomendacion) return;
 
@@ -586,12 +429,10 @@ const rec = useMemo(
       recommendation: rec,
       user,
       garment: prenda,
-
     };
 
     const serialized = JSON.stringify(payload);
     if (serialized === lastPayloadRef.current) return;
-
     lastPayloadRef.current = serialized;
     onRecomendacion(payload);
   }, [fitUi, rec, user, prenda, onRecomendacion]);
@@ -607,9 +448,7 @@ const rec = useMemo(
     setFootLength(isNaN(val) ? 0 : val);
   };
 
-  const creandoAvatar = false;
-
-  // UI de recomendación (solo modo app; en sizeguide ya la mostramos en el panel izquierdo)
+  // UI recomendación (modo app/demo)
   const isOk = rec.tag === "OK";
   const isSizeUp = rec.tag === "SIZE_UP";
   const isSizeDown = rec.tag === "SIZE_DOWN";
@@ -617,18 +456,17 @@ const rec = useMemo(
 
   const relevantLengths =
     viewMode === "bottom"
-      ? (fit?.lengths ?? []).filter((lz) => lz.zone === "largoPierna")
+      ? (fitUi?.lengths ?? []).filter((lz: any) => lz.zone === "largoPierna")
       : viewMode === "top"
-      ? (fit?.lengths ?? []).filter((lz) => lz.zone === "largoTorso")
+      ? (fitUi?.lengths ?? []).filter((lz: any) => lz.zone === "largoTorso")
       : [];
 
-  const hasLengthAlert = relevantLengths.some((lz) => (lz?.status ?? "") !== "Perfecto");
+  const hasLengthAlert = relevantLengths.some((lz: any) => (lz?.status ?? "") !== "Perfecto");
   const shouldWarn = isCheckLength || (isOk && hasLengthAlert);
   const isError = isSizeUp || isSizeDown;
 
   const recBg =
     isOk && !shouldWarn ? "#ecfdf3" : isError ? "#fef2f2" : shouldWarn ? "#fffbeb" : "#eff6ff";
-
   const recBorder =
     isOk && !shouldWarn
       ? "1px solid #bbf7d0"
@@ -640,12 +478,12 @@ const rec = useMemo(
 
   const recTitle =
     isOk && !shouldWarn
-      ? "Calce recomendado · Talle " + prenda.sizeLabel
+      ? `Calce recomendado · Talle ${prenda.sizeLabel}`
       : isError
-      ? "Revisá el calce · Talle evaluado " + prenda.sizeLabel
+      ? `Revisá el calce · Talle evaluado ${prenda.sizeLabel}`
       : shouldWarn
-      ? "Ojo con el largo · Talle " + prenda.sizeLabel
-      : "Calce estimado · Talle " + prenda.sizeLabel;
+      ? `Ojo con el largo · Talle ${prenda.sizeLabel}`
+      : `Calce estimado · Talle ${prenda.sizeLabel}`;
 
   const recBody =
     isOk && !shouldWarn
@@ -657,6 +495,33 @@ const rec = useMemo(
       : shouldWarn
       ? "El talle se ve bien, pero el largo podría no ser ideal. Revisá la alerta de largo antes de decidir tu compra."
       : "Revisá las zonas clave del calce antes de decidir tu talle final.";
+
+  // Badges por zona (modo app/demo)
+  const allWidths = (fitUi as any)?.widths ?? [];
+  const allLengths = (fitUi as any)?.lengths ?? [];
+
+  let widthBadges = allWidths;
+  let lengthBadges = allLengths;
+
+  if (viewMode === "top") {
+    widthBadges = allWidths.filter((z: any) => ["hombros", "pecho", "cintura"].includes(z.zone));
+    lengthBadges = allLengths.filter((lz: any) => lz.zone === "largoTorso");
+  } else if (viewMode === "bottom") {
+    widthBadges = allWidths.filter((z: any) => ["cintura", "cadera"].includes(z.zone));
+    const leg = allLengths.find((lz: any) => lz.zone === "largoPierna");
+    lengthBadges = leg ? [leg] : [];
+  } else if (viewMode === "shoes") {
+    widthBadges = [];
+    lengthBadges = [];
+  }
+
+  const shoeChip = viewMode === "shoes" ? shoeOverlayFromFit(fitUi, footLength) : null;
+  const shoeChipBorder =
+    shoeChip?.statusKey === "Perfecto"
+      ? chipBorderColor("Perfecto")
+      : shoeChip?.statusKey === "Ajustado"
+      ? chipBorderColor("Ajustado")
+      : chipBorderColor("Grande");
 
   return (
     <div
@@ -674,32 +539,6 @@ const rec = useMemo(
         fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
       }}
     >
-      {/* Paso a paso (solo modo app/demo) */}
-      {!isSizeGuideMode && (
-        <div style={{ display: "flex", gap: 4, marginBottom: 4, fontSize: 12 }}>
-          <span
-            style={{
-              padding: "4px 8px",
-              borderRadius: 999,
-              border: `1px solid ${chipBorderColor(lz.status)}`,
-              background: creandoAvatar ? "#eef2ff" : "#f9fafb",
-            }}
-          >
-            1 · Creá tu avatar (subí una selfie)
-          </span>
-          <span
-            style={{
-              padding: "4px 8px",
-              borderRadius: 999,
-              border: "1px solid #e5e7eb",
-              background: !creandoAvatar ? "#ecfdf3" : "#f9fafb",
-            }}
-          >
-            2 · Visualizá el calce recomendado
-          </span>
-        </div>
-      )}
-
       {/* Selector de tipo de prenda (solo modo app/demo; en sizeguide viene desde Shopify) */}
       {!isSizeGuideMode && (
         <div style={{ display: "flex", gap: 6, marginBottom: 4, fontSize: 11 }}>
@@ -732,7 +571,7 @@ const rec = useMemo(
         </div>
       )}
 
-      {/* Panel principal 3D / Creador embebido */}
+      {/* Panel principal 3D */}
       <div
         style={{
           width: "100%",
@@ -744,111 +583,137 @@ const rec = useMemo(
           position: "relative",
         }}
       >
-        (
-          <>
-            <MannequinViewer variant="male" />
-            <FitOverlay fit={fitUi} viewMode={viewMode} footLength={footLength} />
-          </>
-        )
-            <iframe
-              ref={iframeRef}
-              title="Creador de avatar ReadyPlayerMe"
-              src="https://readyplayer.me/avatar?frameApi"
-              style={{ width: "100%", height: "100%", border: "none" }}
-              allow="camera *; microphone *; clipboard-write"
-            />
-            ()
-          ) : (
-            <div style={{ marginTop: 4, padding: 12, borderRadius: 12, background: recBg, border: recBorder }}>
-              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{recTitle}</div>
-              <div style={{ fontSize: 12, color: "#4b5563" }}>{recBody}</div>
-            </div>
+        <MannequinViewer variant="male" />
+        <FitOverlay fit={fitUi} viewMode={viewMode} footLength={footLength} />
+      </div>
+
+      {/* Recomendación (solo modo app/demo) */}
+      {!isSizeGuideMode && (
+        <div style={{ marginTop: 4, padding: 12, borderRadius: 12, background: recBg, border: recBorder }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{recTitle}</div>
+          <div style={{ fontSize: 12, color: "#4b5563" }}>{recBody}</div>
+        </div>
+      )}
+
+      {/* Vista rápida por zonas (solo modo app/demo) */}
+      {!isSizeGuideMode && (
+        <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+          {widthBadges.map((z: any) => (
+            <span
+              key={z.zone}
+              style={{
+                fontSize: 11,
+                padding: "4px 8px",
+                borderRadius: 999,
+                backgroundColor: "#f9fafb",
+                border: `1px solid ${chipBorderColor(z.status)}`,
+              }}
+            >
+              {z.zone}: {z.status}
+            </span>
+          ))}
+
+          {lengthBadges.map((lz: any) => (
+            <span
+              key={lz.zone}
+              style={{
+                fontSize: 11,
+                padding: "4px 8px",
+                borderRadius: 999,
+                backgroundColor: "#f9fafb",
+                border: `1px solid ${chipBorderColor(lz.status)}`,
+              }}
+            >
+              {(lz.zone === "largoTorso" ? "largo torso" : lz.zone === "largoPierna" ? "largo pierna" : lz.zone)}:{" "}
+              {lz.status}
+            </span>
+          ))}
+
+          {viewMode === "shoes" && shoeChip && (
+            <span
+              style={{
+                fontSize: 11,
+                padding: "4px 8px",
+                borderRadius: 999,
+                backgroundColor: "#f9fafb",
+                border: `1px solid ${shoeChipBorder}`,
+              }}
+            >
+              pieLargo: {shoeChip.label}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Inputs (solo modo app/demo) */}
+      {!isSizeGuideMode && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          {(viewMode === "top" || viewMode === "bottom") && (
+            <>
+              <label style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <span style={{ fontSize: 11, color: "#6b7280" }}>Hombros (cm)</span>
+                <input
+                  type="number"
+                  value={Number.isFinite(user.hombros) ? user.hombros : ""}
+                  onChange={handleChange("hombros")}
+                  style={{ borderRadius: 8, border: "1px solid #e5e7eb", padding: "6px 8px", fontSize: 12 }}
+                />
+              </label>
+              <label style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <span style={{ fontSize: 11, color: "#6b7280" }}>Pecho (cm)</span>
+                <input
+                  type="number"
+                  value={Number.isFinite(user.pecho) ? user.pecho : ""}
+                  onChange={handleChange("pecho")}
+                  style={{ borderRadius: 8, border: "1px solid #e5e7eb", padding: "6px 8px", fontSize: 12 }}
+                />
+              </label>
+              <label style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <span style={{ fontSize: 11, color: "#6b7280" }}>Cintura (cm)</span>
+                <input
+                  type="number"
+                  value={Number.isFinite(user.cintura) ? user.cintura : ""}
+                  onChange={handleChange("cintura")}
+                  style={{ borderRadius: 8, border: "1px solid #e5e7eb", padding: "6px 8px", fontSize: 12 }}
+                />
+              </label>
+              {viewMode === "top" && (
+                <label style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <span style={{ fontSize: 11, color: "#6b7280" }}>Largo torso (cm)</span>
+                  <input
+                    type="number"
+                    value={Number.isFinite(user.largoTorso) ? user.largoTorso : ""}
+                    onChange={handleChange("largoTorso")}
+                    style={{ borderRadius: 8, border: "1px solid #e5e7eb", padding: "6px 8px", fontSize: 12 }}
+                  />
+                </label>
+              )}
+              {viewMode === "bottom" && (
+                <label style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <span style={{ fontSize: 11, color: "#6b7280" }}>Largo pierna (cm)</span>
+                  <input
+                    type="number"
+                    value={Number.isFinite(user.largoPierna) ? user.largoPierna : ""}
+                    onChange={handleChange("largoPierna")}
+                    style={{ borderRadius: 8, border: "1px solid #e5e7eb", padding: "6px 8px", fontSize: 12 }}
+                  />
+                </label>
+              )}
+            </>
           )}
 
-          {/* Vista rápida por zonas */}
-          <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
-            {(() => {
-              const allWidths = fit?.widths ?? [];
-              const allLengths = fit?.lengths ?? [];
-
-              let widthBadges = allWidths;
-              let lengthBadges = allLengths;
-
-              if (viewMode === "top") {
-                widthBadges = allWidths.filter((z) => ["hombros", "pecho", "cintura"].includes(z.zone));
-                lengthBadges = allLengths.filter((lz) => lz.zone === "largoTorso");
-              } else if (viewMode === "bottom") {
-                widthBadges = allWidths.filter((z) => ["cintura", "cadera"].includes(z.zone));
-                const leg = allLengths.find((lz) => lz.zone === "largoPierna");
-                if (leg) {
-                  lengthBadges = [leg];
-                } else if (allLengths.length) {
-                  const base = allLengths[0];
-                  lengthBadges = [{ ...base, zone: "largoPierna" } as typeof base];
-                } else {
-                  lengthBadges = [];
-                }
-              } else if (viewMode === "shoes") {
-                widthBadges = [];
-                lengthBadges = [];
-              }
-
-              return (
-                <>
-                  {widthBadges.map((z) => (
-                    <span
-                      key={z.zone}
-                      style={{
-                        fontSize: 11,
-                        padding: "4px 8px",
-                        borderRadius: 999,
-                        backgroundColor: "#f9fafb",
-                        border: `1px solid ${z.color}`,
-                      }}
-                    >
-                      {z.zone}: {z.status}
-                    </span>
-                  ))}
-                  {lengthBadges.map((lz) => (
-                    <span
-                      key={lz.zone}
-                      style={{
-                        fontSize: 11,
-                        padding: "4px 8px",
-                        borderRadius: 999,
-                        backgroundColor: "#f9fafb",
-                        border: `1px solid ${chipBorderColor(lz.status)}`,
-                      }}
-                    >
-                      {lz.zone === "largoTorso"
-                        ? "largo torso"
-                        : lz.zone === "largoPierna"
-                        ? "largo pierna"
-                        : lz.zone}
-                      : {lz.status}
-                    </span>
-                  ))}
-                  {viewMode === "shoes" && (() => {
-                    const shoeChip = shoeOverlayFromFit(fitUi, footLength);
-                    return (
-                      <span
-                        style={{
-                          fontSize: 11,
-                          padding: "4px 8px",
-                          borderRadius: 999,
-                          backgroundColor: "#f9fafb",
-                          border: `1px solid ${chipBorderColor(shoeChip.label === "Perfecto" ? "Perfecto" : shoeChip.label)}`,
-                        }}
-                      >
-                        pieLargo: {shoeChip.label}
-                      </span>
-                    );
-                  })()}
-                </>
-              );
-            })()}
-          </div>
-        </>
+          {viewMode === "shoes" && (
+            <label style={{ display: "flex", flexDirection: "column", gap: 2, gridColumn: "1 / -1" }}>
+              <span style={{ fontSize: 11, color: "#6b7280" }}>Largo de pie (cm)</span>
+              <input
+                type="number"
+                value={Number.isFinite(footLength) ? footLength : ""}
+                onChange={handleFootChange}
+                style={{ borderRadius: 8, border: "1px solid #e5e7eb", padding: "6px 8px", fontSize: 12 }}
+              />
+            </label>
+          )}
+        </div>
       )}
     </div>
   );
