@@ -10,16 +10,17 @@ type Props = {
 };
 
 /**
- * Carga el mannequin (M/F) desde /public/models y lo deja en estilo "Minimal Premium":
- * - material gris mate uniforme
- * - centrado en el origen
- * - pies apoyados en y=0
- * - cámara auto-encuadrada para que se vea completo sin scroll
+ * MannequinViewer (Minimal Premium)
+ * - Loads /public/models/mannequin_{m|f}.glb
+ * - Forces matte gray material
+ * - Centers model at origin, feet on y=0
+ * - Auto-frames camera to ALWAYS show full body (no scroll / no crop)
  */
 const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
   const root = useRef<THREE.Group>(null);
+  const controlsRef = useRef<any>(null);
   const gltf = useGLTF(url) as any;
-  const { camera, invalidate } = useThree();
+  const { camera, size, invalidate } = useThree();
 
   const premiumMaterial = useMemo(() => {
     return new THREE.MeshStandardMaterial({
@@ -32,76 +33,102 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
   useEffect(() => {
     if (!root.current) return;
 
-    // Clonar escena (evita mutaciones de caché de useGLTF)
+    // Rebuild scene under root (avoid mutating cached gltf.scene)
     root.current.clear();
     const sceneClone: THREE.Object3D = gltf.scene.clone(true);
 
-    // Forzar material gris mate en todo el modelo (sin texturas)
+    // Force matte material everywhere
     sceneClone.traverse((obj: any) => {
-      if (obj && obj.isMesh) {
+      if (obj?.isMesh) {
         obj.material = premiumMaterial;
         obj.castShadow = false;
         obj.receiveShadow = false;
-        if (obj.geometry) obj.geometry.computeVertexNormals?.();
+        obj.geometry?.computeVertexNormals?.();
       }
     });
 
     root.current.add(sceneClone);
 
-    // Bounds del modelo
+    // 1) Bounds (pre-transform)
     const box = new THREE.Box3().setFromObject(root.current);
-    const size = new THREE.Vector3();
+    const sizeVec = new THREE.Vector3();
     const center = new THREE.Vector3();
-    box.getSize(size);
+    box.getSize(sizeVec);
     box.getCenter(center);
 
-    // Centrar
+    // 2) Center on origin
     root.current.position.sub(center);
 
-    // Escalar a altura objetivo
-    const TARGET_HEIGHT = 1.75; // metros aprox
-    const scale = TARGET_HEIGHT / (size.y || 1);
+    // 3) Normalize height to a target (stable between M/F)
+    const TARGET_HEIGHT = 1.75; // meters-ish
+    const scale = TARGET_HEIGHT / (sizeVec.y || 1);
     root.current.scale.setScalar(scale);
 
-    // Recalcular bounds post-scale y apoyar en piso (y=0)
+    // 4) Put feet on ground (y=0)
     const box2 = new THREE.Box3().setFromObject(root.current);
-    const minY = box2.min.y;
-    root.current.position.y -= minY;
+    root.current.position.y -= box2.min.y;
 
-    // Auto-encuadre de cámara (para ver el cuerpo entero)
+    // 5) Auto-frame camera using BOX fit (more reliable than bounding sphere across different bodies)
     const box3 = new THREE.Box3().setFromObject(root.current);
-    const sphere = new THREE.Sphere();
-    box3.getBoundingSphere(sphere);
+    const size2 = new THREE.Vector3();
+    const center2 = new THREE.Vector3();
+    box3.getSize(size2);
+    box3.getCenter(center2);
 
-    const radius = Math.max(0.0001, sphere.radius);
-    const fov = (camera as THREE.PerspectiveCamera).fov ?? 35;
-    const fovRad = (fov * Math.PI) / 180;
+    const persp = camera as THREE.PerspectiveCamera;
+    const vFov = (persp.fov * Math.PI) / 180;
+    const aspect = Math.max(0.0001, size.width / size.height);
+    const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
 
-    // Distancia necesaria para encuadrar (factor >1 da margen)
-    const fitOffset = 1.45;
-    const dist = (radius / Math.tan(fovRad / 2)) * fitOffset;
+    // Half-sizes
+    const halfH = size2.y / 2;
+    const halfW = size2.x / 2;
 
-    // Posicionar cámara en frente, un poco arriba para composición agradable
-    camera.position.set(0, sphere.center.y + radius * 0.25, dist);
-    camera.lookAt(sphere.center.x, sphere.center.y + radius * 0.15, sphere.center.z);
-    camera.near = Math.max(0.01, dist / 100);
-    camera.far = Math.max(50, dist * 10);
-    camera.updateProjectionMatrix();
+    // Distances required to fit vertical & horizontal
+    const distV = halfH / Math.tan(vFov / 2);
+    const distH = halfW / Math.tan(hFov / 2);
+
+    // Margin so it never touches edges (and compensates for overlays)
+    const FIT_OFFSET = 1.25;
+    const dist = Math.max(distV, distH) * FIT_OFFSET;
+
+    // Compose: camera slightly above center, looking at upper torso
+    const lookAt = new THREE.Vector3(center2.x, center2.y + size2.y * 0.12, center2.z);
+    const camPos = new THREE.Vector3(center2.x, center2.y + size2.y * 0.18, center2.z + dist);
+
+    persp.position.copy(camPos);
+    persp.near = Math.max(0.01, dist / 100);
+    persp.far = Math.max(50, dist * 10);
+    persp.lookAt(lookAt);
+    persp.updateProjectionMatrix();
+
+    // Even if controls are disabled, keep target consistent (future-proof)
+    if (controlsRef.current) {
+      controlsRef.current.target.copy(lookAt);
+      controlsRef.current.update();
+    }
 
     invalidate();
-  }, [gltf, premiumMaterial, camera, invalidate]);
+  }, [gltf, premiumMaterial, camera, size.width, size.height, invalidate]);
 
-  return <group ref={root as any} />;
+  return (
+    <>
+      <group ref={root as any} />
+      <OrbitControls
+        ref={controlsRef}
+        enablePan={false}
+        enableZoom={false}
+        enableRotate={false}
+      />
+    </>
+  );
 };
 
 export const MannequinViewer: React.FC<Props> = ({ variant = "male" }) => {
   const url = variant === "female" ? "/models/mannequin_f.glb" : "/models/mannequin_m.glb";
 
   return (
-    <Canvas
-      camera={{ position: [0, 1.5, 2.6], fov: 35 }}
-      style={{ width: "100%", height: "100%" }}
-    >
+    <Canvas camera={{ position: [0, 1.5, 3.0], fov: 35 }} style={{ width: "100%", height: "100%" }}>
       <color attach="background" args={["#f9fafb"]} />
 
       <hemisphereLight intensity={0.95} groundColor="#d1d5db" />
@@ -109,9 +136,6 @@ export const MannequinViewer: React.FC<Props> = ({ variant = "male" }) => {
       <directionalLight position={[-3, 2, -2]} intensity={0.35} />
 
       <MannequinScene url={url} />
-
-      {/* Controles bloqueados (solo para setear target internamente si luego lo habilitamos) */}
-      <OrbitControls enablePan={false} enableZoom={false} enableRotate={false} />
     </Canvas>
   );
 };
