@@ -11,17 +11,14 @@ type Props = {
 
 /**
  * MannequinViewer (Minimal Premium)
- * - Loads /public/models/mannequin_{m|f}.glb
- * - Forces matte gray material
- * - Normalizes model: centered, feet on y=0, consistent height
- * - Frames camera in a STABLE, product-like way:
- *   - No aspect-ratio math
- *   - No horizontal-fit juggling
- *   - Uses bounding-sphere distance for predictability across M/F and container sizes
  *
- * Goal:
- * - Full body in one view (no crop)
- * - Same “feel” on every open / toggle
+ * ✅ Objetivo real (producto):
+ * - Mannequin completo SIEMPRE (cabeza + pies) en una sola vista.
+ * - Encadre estable al abrir y al alternar M/F.
+ *
+ * Nota importante:
+ * - En modales/iframes, los cálculos que intentan “fit” horizontal por aspect suelen romper el encuadre.
+ * - Este viewer usa SOLO el fit vertical (altura) + margen fijo (producto-like).
  */
 const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
   const root = useRef<THREE.Group>(null);
@@ -74,11 +71,11 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
       rawBox.getSize(rawSize);
       rawBox.getCenter(rawCenter);
 
-      // Center on origin
+      // Center on origin (world)
       root.current.position.sub(rawCenter);
 
       // Normalize height to a stable target (between M/F)
-      const TARGET_HEIGHT = 1.75; // meters-ish (visual target)
+      const TARGET_HEIGHT = 1.75; // visual target
       const scale = TARGET_HEIGHT / (rawSize.y || 1);
       root.current.scale.setScalar(scale);
 
@@ -87,7 +84,7 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
       root.current.position.y -= boxAfterScale.min.y;
 
       // ---------------------------
-      // 2) STABLE CAMERA FRAME
+      // 2) STABLE CAMERA FRAME (VERTICAL ONLY)
       // ---------------------------
       const box = new THREE.Box3().setFromObject(root.current);
       const sizeVec = new THREE.Vector3();
@@ -95,25 +92,28 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
       box.getSize(sizeVec);
       box.getCenter(center);
 
-      // Use bounding sphere for predictable distance (no aspect math)
-      const sphere = new THREE.Sphere();
-      box.getBoundingSphere(sphere);
-
       const persp = camera as THREE.PerspectiveCamera;
 
-      // Keep a consistent FOV (Canvas sets it, but just in case)
+      // Keep a consistent FOV
       if (!Number.isFinite(persp.fov) || persp.fov <= 0) persp.fov = 35;
 
       const vFov = (persp.fov * Math.PI) / 180;
 
-      // Distance to fit sphere in vertical fov (stable).
-      // Add margin so overlays never touch edges.
-      const FIT_MARGIN = 1.12;
-      const dist = (sphere.radius / Math.sin(vFov / 2)) * FIT_MARGIN;
+      // Fit by height only (stable in modals/iframes)
+      const halfH = Math.max(0.0001, sizeVec.y / 2);
+
+      // Margin: si lo querés un poco más grande/pequeño, tocás SOLO esto
+      const FIT_MARGIN = 1.25;
+
+      // Distance needed to fit vertical height
+      let dist = (halfH / Math.tan(vFov / 2)) * FIT_MARGIN;
+
+      // Clamp to avoid "super zoom" if bounds are weird for 1 frame
+      dist = THREE.MathUtils.clamp(dist, 2.0, 8.0);
 
       // Look slightly above center (upper torso focus) while keeping full body visible
-      const lookAt = new THREE.Vector3(center.x, center.y + sizeVec.y * 0.08, center.z);
-      const camPos = new THREE.Vector3(center.x, center.y + sizeVec.y * 0.12, center.z + dist);
+      const lookAt = new THREE.Vector3(center.x, center.y + sizeVec.y * 0.06, center.z);
+      const camPos = new THREE.Vector3(center.x, center.y + sizeVec.y * 0.10, center.z + dist);
 
       persp.position.copy(camPos);
       persp.near = Math.max(0.01, dist / 200);
