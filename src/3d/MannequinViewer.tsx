@@ -15,6 +15,10 @@ type Props = {
  * - Forces matte gray material
  * - Centers model at origin, feet on y=0
  * - Auto-frames camera to ALWAYS show full body (no scroll / no crop)
+ *
+ * Fix importante:
+ * - Resetea transform del root (position/scale/rotation) ANTES de medir bounds.
+ *   Sin esto, al alternar M/F o al primer render, el scale previo contamina Box3 y rompe el encuadre.
  */
 const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
   const root = useRef<THREE.Group>(null);
@@ -35,6 +39,12 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
 
     // Rebuild scene under root (avoid mutating cached gltf.scene)
     root.current.clear();
+
+    // 🔧 CRÍTICO: resetear transform para que Box3 mida "limpio"
+    root.current.position.set(0, 0, 0);
+    root.current.rotation.set(0, 0, 0);
+    root.current.scale.set(1, 1, 1);
+
     const sceneClone: THREE.Object3D = gltf.scene.clone(true);
 
     // Force matte material everywhere
@@ -49,77 +59,88 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
 
     root.current.add(sceneClone);
 
-    // 1) Bounds (pre-transform)
-    const box = new THREE.Box3().setFromObject(root.current);
-    const sizeVec = new THREE.Vector3();
-    const center = new THREE.Vector3();
-    box.getSize(sizeVec);
-    box.getCenter(center);
+    const fitAndFrame = () => {
+      if (!root.current) return;
 
-    // 2) Center on origin
-    root.current.position.sub(center);
+      // 1) Bounds (pre-transform)
+      const box = new THREE.Box3().setFromObject(root.current);
+      const sizeVec = new THREE.Vector3();
+      const center = new THREE.Vector3();
+      box.getSize(sizeVec);
+      box.getCenter(center);
 
-    // 3) Normalize height to a target (stable between M/F)
-    const TARGET_HEIGHT = 1.75; // meters-ish
-    const scale = TARGET_HEIGHT / (sizeVec.y || 1);
-    root.current.scale.setScalar(scale);
+      // 2) Center on origin
+      root.current.position.sub(center);
 
-    // 4) Put feet on ground (y=0)
-    const box2 = new THREE.Box3().setFromObject(root.current);
-    root.current.position.y -= box2.min.y;
+      // 3) Normalize height to a target (stable between M/F)
+      const TARGET_HEIGHT = 1.75; // meters-ish
+      const scale = TARGET_HEIGHT / (sizeVec.y || 1);
+      root.current.scale.setScalar(scale);
 
-    // 5) Auto-frame camera using BOX fit (more reliable than bounding sphere across different bodies)
-    const box3 = new THREE.Box3().setFromObject(root.current);
-    const size2 = new THREE.Vector3();
-    const center2 = new THREE.Vector3();
-    box3.getSize(size2);
-    box3.getCenter(center2);
+      // 4) Put feet on ground (y=0)
+      const box2 = new THREE.Box3().setFromObject(root.current);
+      root.current.position.y -= box2.min.y;
 
-    const persp = camera as THREE.PerspectiveCamera;
-    const vFov = (persp.fov * Math.PI) / 180;
-    const aspect = Math.max(0.0001, size.width / size.height);
-    const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
+      // 5) Auto-frame camera using BOX fit (más estable que sphere)
+      const box3 = new THREE.Box3().setFromObject(root.current);
+      const size2 = new THREE.Vector3();
+      const center2 = new THREE.Vector3();
+      box3.getSize(size2);
+      box3.getCenter(center2);
 
-    // Half-sizes
-    const halfH = size2.y / 2;
-    const halfW = size2.x / 2;
+      const persp = camera as THREE.PerspectiveCamera;
+      const vFov = (persp.fov * Math.PI) / 180;
+      const aspect = Math.max(0.0001, size.width / Math.max(1, size.height));
+      const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
 
-    // Distances required to fit vertical & horizontal
-    const distV = halfH / Math.tan(vFov / 2);
-    const distH = halfW / Math.tan(hFov / 2);
+      // Half-sizes
+      const halfH = size2.y / 2;
+      const halfW = size2.x / 2;
 
-    // Margin so it never touches edges (and compensates for overlays)
-    const FIT_OFFSET = 1.25;
-    const dist = Math.max(distV, distH) * FIT_OFFSET;
+      // Distances required to fit vertical & horizontal
+      const distV = halfH / Math.tan(vFov / 2);
+      const distH = halfW / Math.tan(hFov / 2);
 
-    // Compose: camera slightly above center, looking at upper torso
-    const lookAt = new THREE.Vector3(center2.x, center2.y + size2.y * 0.12, center2.z);
-    const camPos = new THREE.Vector3(center2.x, center2.y + size2.y * 0.18, center2.z + dist);
+      // Margin so it never touches edges (and compensates for overlays)
+      const FIT_OFFSET = 1.32;
+      const dist = Math.max(distV, distH) * FIT_OFFSET;
 
-    persp.position.copy(camPos);
-    persp.near = Math.max(0.01, dist / 100);
-    persp.far = Math.max(50, dist * 10);
-    persp.lookAt(lookAt);
-    persp.updateProjectionMatrix();
+      // Compose: camera slightly above center, looking at upper torso
+      const lookAt = new THREE.Vector3(center2.x, center2.y + size2.y * 0.12, center2.z);
+      const camPos = new THREE.Vector3(center2.x, center2.y + size2.y * 0.18, center2.z + dist);
 
-    // Even if controls are disabled, keep target consistent (future-proof)
-    if (controlsRef.current) {
-      controlsRef.current.target.copy(lookAt);
-      controlsRef.current.update();
-    }
+      persp.position.copy(camPos);
+      persp.near = Math.max(0.01, dist / 100);
+      persp.far = Math.max(50, dist * 10);
+      persp.lookAt(lookAt);
+      persp.updateProjectionMatrix();
 
-    invalidate();
+      if (controlsRef.current) {
+        controlsRef.current.target.copy(lookAt);
+        controlsRef.current.update();
+      }
+
+      invalidate();
+    };
+
+    // 🔧 Importante: esperar 1 frame para tener size estable y el clone montado
+    const raf1 = requestAnimationFrame(() => {
+      const raf2 = requestAnimationFrame(() => fitAndFrame());
+      // Cleanup second RAF if unmounted early
+      (fitAndFrame as any)._raf2 = raf2;
+    });
+
+    return () => {
+      cancelAnimationFrame(raf1);
+      const raf2 = (fitAndFrame as any)?._raf2;
+      if (raf2) cancelAnimationFrame(raf2);
+    };
   }, [gltf, premiumMaterial, camera, size.width, size.height, invalidate]);
 
   return (
     <>
       <group ref={root as any} />
-      <OrbitControls
-        ref={controlsRef}
-        enablePan={false}
-        enableZoom={false}
-        enableRotate={false}
-      />
+      <OrbitControls ref={controlsRef} enablePan={false} enableZoom={false} enableRotate={false} />
     </>
   );
 };
