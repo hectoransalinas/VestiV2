@@ -10,19 +10,23 @@ type Props = {
 };
 
 /**
- * MannequinViewer (Minimal Premium) — Framing definitivo M/F
+ * MannequinViewer — Framing M/F consistente
  *
- * Problema observado:
- * - Con FIT por altura únicamente, Female queda perfecto pero Male (más ancho) puede quedar “fuera de cuadro”
- *   en los laterales / arriba por tener un bounding box más grande en X.
+ * Problema que queda:
+ * - F se ve perfecto, pero M queda "alto" (menos aire en la cabeza).
  *
- * Solución:
- * - Mantener el enfoque “producto” (encuadre estable) pero considerar también el ANCHO:
- *   - Calculamos distancia requerida para altura (distV)
- *   - Calculamos distancia requerida para ancho (distW) usando un aspect CLAMPEADO (para evitar jitter por scrollbars)
- *   - Tomamos la mayor (max) y aplicamos FIT_MARGIN
+ * Causa:
+ * - Usar center.y (del bounding box) para componer la cámara hace que,
+ *   si el modelo tiene distribución distinta (hombros/pecho más masivos, cabeza distinta),
+ *   el "centro" cambie y el encuadre vertical quede diferente.
  *
- * CONTROL ÚNICO DE TAMAÑO:
+ * Fix:
+ * - Después de poner pies en y=0, usamos el BOX min/max para anclar la composición:
+ *   - lookAtY y camY se calculan como fracción de la altura desde el piso (minY),
+ *     no desde el centro.
+ * - Mantiene el fit por altura/ancho + aspect CLAMPEADO para que M no se salga lateralmente.
+ *
+ * CONTROL DE TAMAÑO:
  * - FIT_MARGIN (más grande = mannequin más chico)
  */
 const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
@@ -77,26 +81,31 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
       const scale = TARGET_HEIGHT / (rawSize.y || 1);
       root.current.scale.setScalar(scale);
 
+      // Feet on y=0
       const boxAfterScale = new THREE.Box3().setFromObject(root.current);
-      root.current.position.y -= boxAfterScale.min.y; // feet on y=0
+      root.current.position.y -= boxAfterScale.min.y;
 
-      // 2) Bounds finales (post-normalización)
+      // 2) Bounds finales
       const box = new THREE.Box3().setFromObject(root.current);
       const sizeVec = new THREE.Vector3();
       const center = new THREE.Vector3();
       box.getSize(sizeVec);
       box.getCenter(center);
 
+      const minY = box.min.y;
+      const maxY = box.max.y;
+      const height = Math.max(0.0001, maxY - minY);
+
       const persp = camera as THREE.PerspectiveCamera;
       persp.fov = 35;
 
       const vFov = (persp.fov * Math.PI) / 180;
 
-      // Distancia requerida por altura
+      // Fit por altura
       const halfH = Math.max(0.0001, sizeVec.y / 2);
       const distV = halfH / Math.tan(vFov / 2);
 
-      // Distancia requerida por ancho (con aspect CLAMPEADO para estabilidad)
+      // Fit por ancho (aspect clamped para estabilidad en modal)
       const rawAspect = size.width / Math.max(1, size.height);
       const aspect = THREE.MathUtils.clamp(rawAspect, 1.15, 1.85);
       const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
@@ -104,17 +113,25 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
       const halfW = Math.max(0.0001, sizeVec.x / 2);
       const distW = halfW / Math.tan(hFov / 2);
 
-      // 🔧 Tamaño final (más grande = más chico)
+      // Tamaño final
       const FIT_MARGIN = 9;
 
       let dist = Math.max(distV, distW) * FIT_MARGIN;
-
-      // Clamp para evitar rarezas en el 1er frame / tamaños raros del modal
       dist = THREE.MathUtils.clamp(dist, 12, 45);
 
-      // LookAt/cámara: leve foco torso, estable
-      const lookAt = new THREE.Vector3(center.x, center.y + sizeVec.y * 0.04, center.z);
-      const camPos = new THREE.Vector3(center.x, center.y + sizeVec.y * 0.06, center.z + dist);
+      /**
+       * ✅ COMPOSICIÓN VERTICAL CONSISTENTE (clave del fix)
+       * En vez de usar center.y, anclamos desde el piso:
+       * - lookAt ~ mitad superior del torso
+       * - camY un poco más arriba para "premium headroom"
+       *
+       * Estos coeficientes están elegidos para que M quede igual que F.
+       */
+      const lookAtY = minY + height * 0.56;
+      const camY = minY + height * 0.60;
+
+      const lookAt = new THREE.Vector3(center.x, lookAtY, center.z);
+      const camPos = new THREE.Vector3(center.x, camY, center.z + dist);
 
       persp.position.copy(camPos);
       persp.near = Math.max(0.1, dist / 500);
@@ -130,7 +147,6 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
       invalidate();
     };
 
-    // 2 RAF para asegurar size estable en modal/iframe
     const raf1 = requestAnimationFrame(() => {
       const raf2 = requestAnimationFrame(() => normalizeAndFrame());
       (normalizeAndFrame as any)._raf2 = raf2;
