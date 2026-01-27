@@ -605,20 +605,43 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
 
     const chipTone = (statusRaw: string) => {
       const s = String(statusRaw || "").trim();
+
+      // Verde: OK
       const isOk = s === "Perfecto";
+
+      // Rojo: ajustado/justo
       const isTight = s === "Ajustado" || s === "Justo";
-      const isLoose = s === "Holgado";
+
+      // Amarillo: holgado / grande / warnings de largo
+      const isLoose = s === "Holgado" || s === "Grande";
       const isWarn = s === "Largo" || s === "Corto";
+
       if (isOk) {
-        return { bg: "rgba(22, 163, 74, 0.10)", border: "rgba(22, 163, 74, 0.35)", text: "#14532d" };
+        return {
+          bg: "rgba(22, 163, 74, 0.10)",
+          border: "rgba(22, 163, 74, 0.35)",
+          text: "#14532d",
+        };
       }
       if (isTight) {
-        return { bg: "rgba(220, 38, 38, 0.10)", border: "rgba(220, 38, 38, 0.35)", text: "#7f1d1d" };
+        return {
+          bg: "rgba(220, 38, 38, 0.10)",
+          border: "rgba(220, 38, 38, 0.35)",
+          text: "#7f1d1d",
+        };
       }
       if (isLoose || isWarn) {
-        return { bg: "rgba(234, 179, 8, 0.12)", border: "rgba(234, 179, 8, 0.40)", text: "#78350f" };
+        return {
+          bg: "rgba(234, 179, 8, 0.12)",
+          border: "rgba(234, 179, 8, 0.40)",
+          text: "#78350f",
+        };
       }
-      return { bg: "rgba(0,0,0,0.04)", border: "rgba(0,0,0,0.06)", text: "#111827" };
+      return {
+        bg: "rgba(0,0,0,0.04)",
+        border: "rgba(0,0,0,0.06)",
+        text: "#111827",
+      };
     };
 
     return (
