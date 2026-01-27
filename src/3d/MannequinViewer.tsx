@@ -10,15 +10,18 @@ type Props = {
 };
 
 /**
- * MannequinViewer (Minimal Premium)
- * - Loads /public/models/mannequin_{m|f}.glb
- * - Forces matte gray material
- * - Centers model at origin, feet on y=0
- * - Auto-frames camera to ALWAYS show full body (no scroll / no crop)
+ * MannequinViewer — Stable Fit + Centered Composition (NO crop)
  *
- * Fix importante:
- * - Resetea transform del root (position/scale/rotation) ANTES de medir bounds.
- *   Sin esto, al alternar M/F o al primer render, el scale previo contamina Box3 y rompe el encuadre.
+ * Lo que te pasó en la captura (quedó “gigante”):
+ * - Bajamos el FIT_OFFSET (distancia) demasiado -> cámara MUY cerca => sólo piernas/pies.
+ * - Además, al mirar exactamente al centro del bounding box, el encuadre pierde “headroom”
+ *   y se siente alto/extraño según la proporción del modelo.
+ *
+ * Fix:
+ * 1) Fit estable: distancia se calcula para que ENTRE el cuerpo completo (sin crop).
+ * 2) Control de “tamaño” en pantalla: un solo knob (FIT_OFFSET) con valores seguros.
+ * 3) Composición centrada REAL: target entre piso y cabeza, con un leve sesgo configurable,
+ *    sin depender de center.y (que cambia distinto entre M/F).
  */
 const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
   const root = useRef<THREE.Group>(null);
@@ -26,34 +29,33 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
   const gltf = useGLTF(url) as any;
   const { camera, size, invalidate } = useThree();
 
-  const premiumMaterial = useMemo(() => {
-    return new THREE.MeshStandardMaterial({
-      color: new THREE.Color("#bfc5cc"),
-      roughness: 0.95,
-      metalness: 0.0,
-    });
-  }, []);
+  const premiumMaterial = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: new THREE.Color("#bfc5cc"),
+        roughness: 0.95,
+        metalness: 0.0,
+      }),
+    []
+  );
 
   useEffect(() => {
     if (!root.current) return;
 
-    // Rebuild scene under root (avoid mutating cached gltf.scene)
     root.current.clear();
 
-    // 🔧 CRÍTICO: resetear transform para que Box3 mida "limpio"
+    // Reset transforms (critical for clean bounds when toggling M/F)
     root.current.position.set(0, 0, 0);
     root.current.rotation.set(0, 0, 0);
     root.current.scale.set(1, 1, 1);
 
     const sceneClone: THREE.Object3D = gltf.scene.clone(true);
 
-    // Force matte material everywhere
     sceneClone.traverse((obj: any) => {
       if (obj?.isMesh) {
         obj.material = premiumMaterial;
         obj.castShadow = false;
         obj.receiveShadow = false;
-        obj.geometry?.computeVertexNormals?.();
       }
     });
 
@@ -62,63 +64,81 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
     const fitAndFrame = () => {
       if (!root.current) return;
 
-      // 1) Bounds (pre-transform)
+      // 1) Bounds pre-transform
+      const rawBox = new THREE.Box3().setFromObject(root.current);
+      const rawSize = new THREE.Vector3();
+      const rawCenter = new THREE.Vector3();
+      rawBox.getSize(rawSize);
+      rawBox.getCenter(rawCenter);
+
+      // 2) Center at origin
+      root.current.position.sub(rawCenter);
+
+      // 3) Normalize height (stable between M/F)
+      const TARGET_HEIGHT = 1.75;
+      const scale = TARGET_HEIGHT / (rawSize.y || 1);
+      root.current.scale.setScalar(scale);
+
+      // 4) Feet on ground
+      const boxAfterScale = new THREE.Box3().setFromObject(root.current);
+      root.current.position.y -= boxAfterScale.min.y;
+
+      // 5) Final bounds
       const box = new THREE.Box3().setFromObject(root.current);
       const sizeVec = new THREE.Vector3();
       const center = new THREE.Vector3();
       box.getSize(sizeVec);
       box.getCenter(center);
 
-      // 2) Center on origin
-      root.current.position.sub(center);
-
-      // 3) Normalize height to a target (stable between M/F)
-      const TARGET_HEIGHT = 1.75; // meters-ish
-      const scale = TARGET_HEIGHT / (sizeVec.y || 1);
-      root.current.scale.setScalar(scale);
-
-      // 4) Put feet on ground (y=0)
-      const box2 = new THREE.Box3().setFromObject(root.current);
-      root.current.position.y -= box2.min.y;
-
-      // 5) Auto-frame camera using BOX fit (más estable que sphere)
-      const box3 = new THREE.Box3().setFromObject(root.current);
-      const size2 = new THREE.Vector3();
-      const center2 = new THREE.Vector3();
-      box3.getSize(size2);
-      box3.getCenter(center2);
+      const minY = box.min.y;
+      const maxY = box.max.y;
+      const height = Math.max(0.0001, maxY - minY);
 
       const persp = camera as THREE.PerspectiveCamera;
+      persp.fov = 35;
+
       const vFov = (persp.fov * Math.PI) / 180;
-      const aspect = Math.max(0.0001, size.width / Math.max(1, size.height));
+
+      // Aspect clamped (muy importante con el contenedor nuevo y modal ancho)
+      const rawAspect = size.width / Math.max(1, size.height);
+      const aspect = THREE.MathUtils.clamp(rawAspect, 1.2, 1.85);
       const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
 
-      // Half-sizes
-      const halfH = size2.y / 2;
-      const halfW = size2.x / 2;
+      const halfH = Math.max(0.0001, sizeVec.y / 2);
+      const halfW = Math.max(0.0001, sizeVec.x / 2);
 
-      // Distances required to fit vertical & horizontal
       const distV = halfH / Math.tan(vFov / 2);
       const distH = halfW / Math.tan(hFov / 2);
 
-      // ✅ FIT_MARGIN (pedido): 5.5 (más chico = más grande en pantalla)
-      // Este archivo venía con un FIT_OFFSET fijo (1.32). Para mantener la misma “escala”
-      // pero permitir el control por FIT_MARGIN, lo mapeamos a partir de una base.
-      const FIT_MARGIN = 5.5;
-      const BASE_FIT_MARGIN = 6.5;
-      const FIT_OFFSET = 1.32 * (FIT_MARGIN / BASE_FIT_MARGIN);
+      // ✅ Tamaño en pantalla: un solo knob seguro.
+      // Más grande => más lejos => maniquí más chico.
+      // Más chico => más cerca => maniquí más grande.
+      //
+      // Tu pedido era “bajar a 5.5”, pero en la práctica nos dejó demasiado cerca (gigante).
+      // Acá lo dejamos AGRESIVO pero seguro: 1.22 (más grande que 1.32, pero sin crop).
+      const FIT_OFFSET = 1.22;
 
-      const dist = Math.max(distV, distH) * FIT_OFFSET;
+      let dist = Math.max(distV, distH) * FIT_OFFSET;
+      dist = THREE.MathUtils.clamp(dist, 10, 40);
 
-      // ✅ CENTRADO REAL EN EL CONTENEDOR (pedido)
-      // Forzamos el encuadre centrado (sin sesgo a “torso arriba”).
-      // Esto baja visualmente al maniquí cuando está quedando alto en el panel.
-      const lookAt = new THREE.Vector3(center2.x, center2.y, center2.z);
-      const camPos = new THREE.Vector3(center2.x, center2.y, center2.z + dist);
+      // ✅ Composición centrada en el contenedor (sin quedar alto)
+      // Centramos el cuerpo completo: 50% del alto desde el piso.
+      // Y ajustamos M vs F con un micro sesgo (solo vertical) para que queden parecidos.
+      const isMale = url.includes("mannequin_m");
+      const centerCoef = 0.50;
+
+      // micro-ajuste (NO gigante): M suele quedar “alto” por proporciones -> bajamos un poco su target
+      const micro = isMale ? -0.04 : 0.0;
+
+      const lookAtY = minY + height * (centerCoef + micro);
+      const camY = lookAtY;
+
+      const lookAt = new THREE.Vector3(center.x, lookAtY, center.z);
+      const camPos = new THREE.Vector3(center.x, camY, center.z + dist);
 
       persp.position.copy(camPos);
-      persp.near = Math.max(0.01, dist / 100);
-      persp.far = Math.max(50, dist * 10);
+      persp.near = Math.max(0.05, dist / 200);
+      persp.far = Math.max(220, dist * 30);
       persp.lookAt(lookAt);
       persp.updateProjectionMatrix();
 
@@ -130,10 +150,8 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
       invalidate();
     };
 
-    // 🔧 Importante: esperar 1 frame para tener size estable y el clone montado
     const raf1 = requestAnimationFrame(() => {
       const raf2 = requestAnimationFrame(() => fitAndFrame());
-      // Cleanup second RAF if unmounted early
       (fitAndFrame as any)._raf2 = raf2;
     });
 
@@ -142,7 +160,7 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
       const raf2 = (fitAndFrame as any)?._raf2;
       if (raf2) cancelAnimationFrame(raf2);
     };
-  }, [gltf, premiumMaterial, camera, size.width, size.height, invalidate]);
+  }, [gltf, premiumMaterial, camera, size.width, size.height, invalidate, url]);
 
   return (
     <>
