@@ -10,21 +10,26 @@ type Props = {
 };
 
 /**
- * MannequinViewer (Minimal Premium)
+ * MannequinViewer (Minimal Premium) — Framing definitivo M/F
  *
- * OBJETIVO CERRADO:
- * - Mannequin MUY chico dentro del modal
- * - Mucho aire arriba y abajo
- * - Base definitiva para overlays
+ * Problema observado:
+ * - Con FIT por altura únicamente, Female queda perfecto pero Male (más ancho) puede quedar “fuera de cuadro”
+ *   en los laterales / arriba por tener un bounding box más grande en X.
  *
- * CONTROL ÚNICO:
- * - FIT_MARGIN (cuanto más grande, más chico el mannequin)
+ * Solución:
+ * - Mantener el enfoque “producto” (encuadre estable) pero considerar también el ANCHO:
+ *   - Calculamos distancia requerida para altura (distV)
+ *   - Calculamos distancia requerida para ancho (distW) usando un aspect CLAMPEADO (para evitar jitter por scrollbars)
+ *   - Tomamos la mayor (max) y aplicamos FIT_MARGIN
+ *
+ * CONTROL ÚNICO DE TAMAÑO:
+ * - FIT_MARGIN (más grande = mannequin más chico)
  */
 const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
   const root = useRef<THREE.Group>(null);
   const controlsRef = useRef<any>(null);
   const gltf = useGLTF(url) as any;
-  const { camera, invalidate } = useThree();
+  const { camera, size, invalidate } = useThree();
 
   const premiumMaterial = useMemo(
     () =>
@@ -59,7 +64,7 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
     const normalizeAndFrame = () => {
       if (!root.current) return;
 
-      // Normalización del modelo
+      // 1) Normalizar modelo
       const rawBox = new THREE.Box3().setFromObject(root.current);
       const rawSize = new THREE.Vector3();
       const rawCenter = new THREE.Vector3();
@@ -73,9 +78,9 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
       root.current.scale.setScalar(scale);
 
       const boxAfterScale = new THREE.Box3().setFromObject(root.current);
-      root.current.position.y -= boxAfterScale.min.y;
+      root.current.position.y -= boxAfterScale.min.y; // feet on y=0
 
-      // Cámara: fit SOLO por altura
+      // 2) Bounds finales (post-normalización)
       const box = new THREE.Box3().setFromObject(root.current);
       const sizeVec = new THREE.Vector3();
       const center = new THREE.Vector3();
@@ -86,23 +91,34 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
       persp.fov = 35;
 
       const vFov = (persp.fov * Math.PI) / 180;
-      const halfH = sizeVec.y / 2;
 
-      /**
-       * 🔧 AJUSTE DEFINITIVO (pedido explícito)
-       * FIT_MARGIN = 9
-       */
+      // Distancia requerida por altura
+      const halfH = Math.max(0.0001, sizeVec.y / 2);
+      const distV = halfH / Math.tan(vFov / 2);
+
+      // Distancia requerida por ancho (con aspect CLAMPEADO para estabilidad)
+      const rawAspect = size.width / Math.max(1, size.height);
+      const aspect = THREE.MathUtils.clamp(rawAspect, 1.15, 1.85);
+      const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
+
+      const halfW = Math.max(0.0001, sizeVec.x / 2);
+      const distW = halfW / Math.tan(hFov / 2);
+
+      // 🔧 Tamaño final (más grande = más chico)
       const FIT_MARGIN = 9;
 
-      let dist = (halfH / Math.tan(vFov / 2)) * FIT_MARGIN;
-      dist = THREE.MathUtils.clamp(dist, 12, 40);
+      let dist = Math.max(distV, distW) * FIT_MARGIN;
 
+      // Clamp para evitar rarezas en el 1er frame / tamaños raros del modal
+      dist = THREE.MathUtils.clamp(dist, 12, 45);
+
+      // LookAt/cámara: leve foco torso, estable
       const lookAt = new THREE.Vector3(center.x, center.y + sizeVec.y * 0.04, center.z);
       const camPos = new THREE.Vector3(center.x, center.y + sizeVec.y * 0.06, center.z + dist);
 
       persp.position.copy(camPos);
       persp.near = Math.max(0.1, dist / 500);
-      persp.far = Math.max(200, dist * 30);
+      persp.far = Math.max(220, dist * 30);
       persp.lookAt(lookAt);
       persp.updateProjectionMatrix();
 
@@ -114,9 +130,18 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
       invalidate();
     };
 
-    const raf = requestAnimationFrame(() => normalizeAndFrame());
-    return () => cancelAnimationFrame(raf);
-  }, [gltf, premiumMaterial, camera, invalidate]);
+    // 2 RAF para asegurar size estable en modal/iframe
+    const raf1 = requestAnimationFrame(() => {
+      const raf2 = requestAnimationFrame(() => normalizeAndFrame());
+      (normalizeAndFrame as any)._raf2 = raf2;
+    });
+
+    return () => {
+      cancelAnimationFrame(raf1);
+      const raf2 = (normalizeAndFrame as any)?._raf2;
+      if (raf2) cancelAnimationFrame(raf2);
+    };
+  }, [gltf, premiumMaterial, camera, size.width, size.height, invalidate]);
 
   return (
     <>
