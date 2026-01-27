@@ -172,6 +172,31 @@ function shoeOverlayFromFit(fit: any, footLength: number): {
   // Fallback: si no está la zona, usamos la heurística por largo de pie (compatible con builds viejas)
   return shoeFitFromFootLength(footLength);
 }
+
+// Normalización para UI (sin tocar el motor): mapea labels de shoes para que
+// chips/etiquetas externas (panel izquierdo) y overlays usen el mismo lenguaje.
+function normalizeFitForUi(fit: any): any {
+  if (!fit) return fit;
+
+  const lengths: any = (fit as any).lengths;
+  if (Array.isArray(lengths)) {
+    const nextLengths = lengths.map((lz: any) => {
+      if (!lz || lz.zone !== "pieLargo") return lz;
+
+      const s = String(lz.status ?? "");
+      if (s === "Corto") return { ...lz, status: "Ajustado" };
+      if (s === "Largo") return { ...lz, status: "Grande" };
+      // Perfecto queda igual
+      return lz;
+    });
+
+    // Clonamos el fit para no mutar el resultado del motor.
+    return { ...fit, lengths: nextLengths };
+  }
+
+  // Si lengths no es array (build rara), lo dejamos intacto.
+  return fit;
+}
 const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
   if (!fit && viewMode !== "shoes") return null;
 
@@ -453,12 +478,15 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
 
   const fit = useMemo(() => computeFit(user, prenda), [user, prenda]);
 
-  const rec = useMemo(
+  
+
+  const fitUi = useMemo(() => normalizeFitForUi(fit), [fit]);
+const rec = useMemo(
     () =>
       makeRecommendation({
         category: categoria,
         garment: prenda,
-        fit,
+        fit: fitUi,
       }),
     [categoria, prenda, fit]
   );
@@ -553,7 +581,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
     if (!onRecomendacion) return;
 
     const payload = {
-      fit,
+      fit: fitUi,
       recommendation: rec,
       user,
       garment: prenda,
@@ -565,7 +593,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
 
     lastPayloadRef.current = serialized;
     onRecomendacion(payload);
-  }, [fit, rec, user, prenda, avatarUrl, onRecomendacion]);
+  }, [fitUi, rec, user, prenda, avatarUrl, onRecomendacion]);
 
   const handleChange =
     (field: keyof Measurements) => (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -719,7 +747,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
           <>
             <ViewerErrorBoundary onError={() => setViewerCrashed(true)}
               ><AvatarViewer avatarUrl={avatarUrl} /></ViewerErrorBoundary>
-            <FitOverlay fit={fit} viewMode={viewMode} footLength={footLength} />
+            <FitOverlay fit={fitUi} viewMode={viewMode} footLength={footLength} />
           </>
         ) : (
           <>
@@ -865,7 +893,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
           {/* Tarjeta de recomendación */}
           {viewMode === "shoes" ? (
             (() => {
-              const shoe = shoeFitFromFootLength(footLength);
+              const shoe = shoeOverlayFromFit(fitUi, footLength);
               const euSize = mapFootToEuSize(footLength);
               const bg =
                 shoe.statusKey === "Perfecto"
