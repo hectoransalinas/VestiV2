@@ -115,7 +115,7 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
       const distW = halfW / Math.tan(hFov / 2);
 
       // Tamaño final (más grande = mannequin más chico)
-      const FIT_MARGIN = 9;
+      const FIT_MARGIN = 6.5; // AGRESIVO: más grande en pantalla
 
       let dist = Math.max(distV, distW) * FIT_MARGIN;
       dist = THREE.MathUtils.clamp(dist, 12, 45);
@@ -128,11 +128,11 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
        * Nota: estos coeficientes NO cambian el tamaño (eso lo controla FIT_MARGIN),
        * solo la composición vertical.
        */
-      const femaleLookAtCoef = 0.58;
-      const femaleCamCoef = 0.46;
+      const femaleLookAtCoef = 0.60;
+      const femaleCamCoef = 0.42;
 
-      const maleLookAtCoef = 0.64;
-      const maleCamCoef = 0.34;
+      const maleLookAtCoef = 0.70;
+      const maleCamCoef = 0.24; // AGRESIVO: baja M en pantalla + más headroom
 
       const lookAtY = minY + height * (isMale ? maleLookAtCoef : femaleLookAtCoef);
       const camY = minY + height * (isMale ? maleCamCoef : femaleCamCoef);
