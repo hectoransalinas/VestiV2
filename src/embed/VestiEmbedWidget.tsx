@@ -40,7 +40,7 @@ type VestiEmbedProps = {
     recommendation: ReturnType<typeof makeRecommendation>;
     user: Measurements;
     garment: Garment;
-    avatarUrl: string;
+    "": string;
   }) => void;
 };
 
@@ -289,14 +289,14 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
             }}
           >
             <span style={{ fontSize: 10.5, fontWeight: 600, color: "#0f172a" }}>
-              {z.zone.toUpperCase()}
+              {z.zone.toUpperCase(
             </span>
             <span style={{ fontSize: 10.5, fontWeight: 500, color: "#0f172a" }}>
               {z.status}
             </span>
           </div>
         );
-      })}
+      }
 
       {/* Indicadores verticales de largo (torso / pierna) */}
       {lengthZones.map((lz) => {
@@ -362,7 +362,7 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
             </div>
           </React.Fragment>
         );
-      })}
+      }
 
       {/* Overlay específico para calzado */}
       {hasShoeOverlay && (
@@ -401,8 +401,8 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
             <span style={{ fontWeight: 600 }}>Calce calzado:</span>
             <span>{shoeFit.label}</span>
           </div>
-        </>
-      )}
+        
+      
     </div>
   );
 };
@@ -450,7 +450,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
   useEffect(() => {
     // If user changes avatar, try rendering again.
     setViewerCrashed(false);
-  }, [avatarUrl]);
+  }, [""]);
 
   const isSizeGuideMode = useMemo(() => {
     try {
@@ -521,7 +521,7 @@ const rec = useMemo(
       if (data.eventName === "v1.avatar.exported") {
         const url = data.data?.url;
         if (url && typeof url === "string") {
-          setAvatarUrl(url);
+          ;
           setShowCreatorHelp(false);
         }
       }
@@ -596,7 +596,7 @@ const rec = useMemo(
       recommendation: rec,
       user,
       garment: prenda,
-      avatarUrl,
+      "",
     };
 
     const serialized = JSON.stringify(payload);
@@ -604,7 +604,7 @@ const rec = useMemo(
 
     lastPayloadRef.current = serialized;
     onRecomendacion(payload);
-  }, [fitUi, rec, user, prenda, avatarUrl, onRecomendacion]);
+  }, [fitUi, rec, user, prenda, "", onRecomendacion]);
 
   const handleChange =
     (field: keyof Measurements) => (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -617,7 +617,7 @@ const rec = useMemo(
     setFootLength(isNaN(val) ? 0 : val);
   };
 
-  const creandoAvatar = !avatarUrl;
+  const creandoAvatar = !"";
 
   // UI de recomendación (solo modo app; en sizeguide ya la mostramos en el panel izquierdo)
   const isOk = rec.tag === "OK";
@@ -697,7 +697,7 @@ const rec = useMemo(
               <button
                 key={mode}
                 type="button"
-                onClick={() => setViewMode(mode)}
+                onClick={() => setViewMode(mode
                 style={{
                   flex: 1,
                   padding: "4px 6px",
@@ -712,11 +712,12 @@ const rec = useMemo(
                 {label}
               </button>
             );
-          })}
+          }
         </div>
-      )}
+      
 
-      {/* Panel principal 3D / Creador embebido */}
+      
+      {/* Panel principal 3D */}
       <div
         style={{
           width: "100%",
@@ -729,133 +730,13 @@ const rec = useMemo(
         }}
       >
         {/* Visor interno: mannequin de referencia */}
-            <MannequinViewer variant="male" />
-            <FitOverlay fit={fitUi} viewMode={viewMode} footLength={footLength} />
-            <iframe
-              ref={iframeRef}
-              title="Creador de avatar ReadyPlayerMe"
-              src="https://readyplayer.me/avatar?frameApi"
-              style={{ width: "100%", height: "100%", border: "none" }}
-              allow="camera *; microphone *; clipboard-write"
-            />
-            {showCreatorHelp && (
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  background: "rgba(15,23,42,0.65)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  padding: 16,
-                  zIndex: 10,
-                }}
-              >
-                <div
-                  style={{
-                    background: "#f9fafb",
-                    borderRadius: 16,
-                    padding: "12px 14px",
-                    maxWidth: "90%",
-                    fontSize: 12,
-                    color: "#0f172a",
-                    boxShadow: "0 10px 25px rgba(15,23,42,0.35)",
-                  }}
-                >
-                  <div style={{ fontWeight: 600, marginBottom: 6, fontSize: 13 }}>
-                    Cómo personalizar tu avatar
-                  </div>
-                  <ol style={{ margin: 0, paddingLeft: 18, marginBottom: 8 }}>
-                    <li>
-                      Tocá el <strong>ícono de la persona</strong> (abajo) para abrir el editor.
-                    </li>
-                    <li>
-                      Elegí un estilo/ropa y ajustá los rasgos.
-                    </li>
-                    <li>
-                      Cuando termines, cerrá el editor: tu avatar se va a mostrar automáticamente acá.
-                    </li>
-                  </ol>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowCreatorHelp(false);
-                    }}
-                    style={{
-                      marginTop: 4,
-                      borderRadius: 999,
-                      border: "none",
-                      padding: "6px 10px",
-                      fontSize: 12,
-                      background: "#4f46e5",
-                      color: "#f9fafb",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Entendido, quiero crear mi avatar
-                  </button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
+        <MannequinViewer variant="male" />
+        <FitOverlay fit={fitUi} viewMode={viewMode} footLength={footLength} />
       </div>
 
-      {/* Todo lo siguiente es SOLO modo app/demo */}
-      {!isSizeGuideMode && (
-        <>
-                      {viewMode === "bottom" && (
-              <>
-                <Field label="Cintura (cm)" value={user.cintura} onChange={handleChange("cintura")} />
-                <Field label="Largo pierna (cm)" value={user.largoPierna} onChange={handleChange("largoPierna")} />
-              </>
-            )}
-
-            {viewMode === "shoes" && (
-              <Field label="Largo pie (cm)" value={footLength} onChange={handleFootChange} />
-            )}
-          </div>
-
-          {/* Tarjeta de recomendación */}
-          {viewMode === "shoes" ? (
-            (() => {
-              const shoe = shoeOverlayFromFit(fitUi, footLength);
-              const euSize = mapFootToEuSize(footLength);
-              const bg =
-                shoe.statusKey === "Perfecto"
-                  ? "#ecfdf3"
-                  : shoe.statusKey === "Ajustado"
-                  ? "#fef2f2"
-                  : "#fffbeb";
-              const border =
-                shoe.statusKey === "Perfecto"
-                  ? "1px solid #bbf7d0"
-                  : shoe.statusKey === "Ajustado"
-                  ? "1px solid #fecACA"
-                  : "1px solid #fef3c7";
-
-              return (
-                <div style={{ marginTop: 4, padding: 12, borderRadius: 12, background: bg, border }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
-                    Calzado recomendado · Talle {euSize ?? "—"}
-                  </div>
-                  <div style={{ fontSize: 12, color: "#4b5563" }}>
-                    {shoe.statusKey === "Perfecto"
-                      ? "Este talle es ideal para tu largo de pie. Si preferís un calce más holgado, podés probar medio número más."
-                      : shoe.statusKey === "Ajustado"
-                      ? "Este talle puede quedarte ajustado. Si te gusta el calce relajado, te conviene un número más."
-                      : "Este talle puede quedarte grande. Si querés un calce más ajustado, probá un número menos."}
-                  </div>
-                </div>
-              );
-            })()
-          ) : (
-            <div style={{ marginTop: 4, padding: 12, borderRadius: 12, background: recBg, border: recBorder }}>
-              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{recTitle}</div>
               <div style={{ fontSize: 12, color: "#4b5563" }}>{recBody}</div>
             </div>
-          )}
+          
 
           {/* Vista rápida por zonas */}
           <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
@@ -900,7 +781,7 @@ const rec = useMemo(
                     >
                       {z.zone}: {z.status}
                     </span>
-                  ))}
+                  )
                   {lengthBadges.map((lz) => (
                     <span
                       key={lz.zone}
@@ -909,7 +790,7 @@ const rec = useMemo(
                         padding: "4px 8px",
                         borderRadius: 999,
                         backgroundColor: "#f9fafb",
-                        border: `1px solid ${chipBorderColor(lz.status)}`,
+                        border: `1px solid ${chipBorderColor(lz.status`,
                       }}
                     >
                       {lz.zone === "largoTorso"
@@ -919,7 +800,7 @@ const rec = useMemo(
                         : lz.zone}
                       : {lz.status}
                     </span>
-                  ))}
+                  )
                   {viewMode === "shoes" && (() => {
                     const shoeChip = shoeOverlayFromFit(fitUi, footLength);
                     return (
@@ -929,19 +810,19 @@ const rec = useMemo(
                           padding: "4px 8px",
                           borderRadius: 999,
                           backgroundColor: "#f9fafb",
-                          border: `1px solid ${chipBorderColor(shoeChip.label === "Perfecto" ? "Perfecto" : shoeChip.label)}`,
+                          border: `1px solid ${chipBorderColor(shoeChip.label === "Perfecto" ? "Perfecto" : shoeChip.label`,
                         }}
                       >
                         pieLargo: {shoeChip.label}
                       </span>
                     );
-                  })()}
-                </>
+                  })(
+                
               );
-            })()}
+            })(
           </div>
-        </>
-      )}
+        
+      
     </div>
   );
 };
