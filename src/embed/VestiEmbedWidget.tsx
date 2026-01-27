@@ -371,6 +371,8 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
 
   const [footLength, setFootLength] = useState<number>(26);
 
+  const [mannequinGender, setMannequinGender] = useState<"male" | "female">("male");
+
   const fit = useMemo(() => computeFit(user, prenda), [user, prenda]);
   const fitUi = useMemo(() => normalizeFitForUi(fit), [fit]);
 
@@ -583,7 +585,53 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
           position: "relative",
         }}
       >
-        <MannequinViewer variant="male" />
+        {/* Toggle M/F mannequin */}
+        <div
+          style={{
+            position: "absolute",
+            left: 10,
+            top: 10,
+            zIndex: 5,
+            display: "flex",
+            gap: 6,
+            pointerEvents: "auto",
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setMannequinGender("male")}
+            style={{
+              padding: "6px 10px",
+              borderRadius: 999,
+              border: "1px solid #e5e7eb",
+              background: mannequinGender === "male" ? "#e0f2fe" : "#ffffff",
+              fontSize: 11,
+              fontWeight: mannequinGender === "male" ? 700 : 600,
+              cursor: "pointer",
+              boxShadow: "0 2px 8px rgba(15,23,42,0.10)",
+            }}
+          >
+            M
+          </button>
+          <button
+            type="button"
+            onClick={() => setMannequinGender("female")}
+            style={{
+              padding: "6px 10px",
+              borderRadius: 999,
+              border: "1px solid #e5e7eb",
+              background: mannequinGender === "female" ? "#e0f2fe" : "#ffffff",
+              fontSize: 11,
+              fontWeight: mannequinGender === "female" ? 700 : 600,
+              cursor: "pointer",
+              boxShadow: "0 2px 8px rgba(15,23,42,0.10)",
+            }}
+          >
+            F
+          </button>
+        </div>
+
+        <MannequinViewer variant={mannequinGender} />
         <FitOverlay fit={fitUi} viewMode={viewMode} footLength={footLength} />
       </div>
 
