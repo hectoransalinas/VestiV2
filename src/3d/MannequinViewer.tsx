@@ -10,14 +10,18 @@ type Props = {
 };
 
 /**
- * MannequinViewer — Framing M/F consistente (V3)
+ * MannequinViewer — Framing M/F consistente (V4 - BAJADA FUERTE)
  *
- * Ajuste pedido:
- * - "M sigue alto, tiene que estar más abajo"
+ * Pedido explícito:
+ * - "hace una bajada más fuerte, que se note el cambio"
+ * - M sigue cortando un pedazo de cabeza → falta headroom
  *
- * Fix:
- * - Bajamos la composición vertical (lookAtY/camY) anclada desde el piso (minY),
- *   usando coeficientes más bajos.
+ * Fix V4:
+ * - Bajada fuerte de composición vertical anclada desde el piso:
+ *   - lookAtY = 0.40 * height
+ *   - camY   = 0.44 * height
+ *
+ * Esto baja al maniquí en pantalla y agrega aire arriba (headroom).
  *
  * CONTROL DE TAMAÑO:
  * - FIT_MARGIN (más grande = mannequin más chico)
@@ -112,13 +116,9 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
       let dist = Math.max(distV, distW) * FIT_MARGIN;
       dist = THREE.MathUtils.clamp(dist, 12, 45);
 
-      /**
-       * ✅ COMPOSICIÓN VERTICAL (BAJADA)
-       * Antes (V2): lookAt 0.56 / cam 0.60
-       * Ahora (V3): lookAt 0.50 / cam 0.54  → baja el modelo en pantalla (más aire arriba)
-       */
-      const lookAtY = minY + height * 0.50;
-      const camY = minY + height * 0.54;
+      // ✅ BAJADA FUERTE (que se note)
+      const lookAtY = minY + height * 0.40;
+      const camY = minY + height * 0.44;
 
       const lookAt = new THREE.Vector3(center.x, lookAtY, center.z);
       const camPos = new THREE.Vector3(center.x, camY, center.z + dist);
