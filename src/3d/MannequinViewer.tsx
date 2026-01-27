@@ -9,6 +9,17 @@ type Props = {
   variant?: Variant;
 };
 
+/**
+ * MannequinViewer (Minimal Premium)
+ *
+ * OBJETIVO:
+ * - Mannequin completo (cabeza + pies) SIEMPRE visible
+ * - Encadre estable en modal / iframe
+ * - Tamaño visual MUCHO más chico (mucho aire arriba y abajo)
+ *
+ * ÚNICO CONTROL DE TAMAÑO:
+ * - FIT_MARGIN
+ */
 const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
   const root = useRef<THREE.Group>(null);
   const controlsRef = useRef<any>(null);
@@ -48,6 +59,7 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
     const normalizeAndFrame = () => {
       if (!root.current) return;
 
+      // 1️⃣ Normalizar modelo
       const rawBox = new THREE.Box3().setFromObject(root.current);
       const rawSize = new THREE.Vector3();
       const rawCenter = new THREE.Vector3();
@@ -63,6 +75,7 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
       const boxAfterScale = new THREE.Box3().setFromObject(root.current);
       root.current.position.y -= boxAfterScale.min.y;
 
+      // 2️⃣ Cámara – FIT POR ALTURA (EXTREMO / PREMIUM)
       const box = new THREE.Box3().setFromObject(root.current);
       const sizeVec = new THREE.Vector3();
       const center = new THREE.Vector3();
@@ -75,18 +88,21 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
       const vFov = (persp.fov * Math.PI) / 180;
       const halfH = sizeVec.y / 2;
 
-      // 🔧 AJUSTE: mannequin MUCHO más chico
-      const FIT_MARGIN = 1.6;
+      /**
+       * 🔧 AJUSTE DEFINITIVO
+       * 3.0 – 3.1  → mannequin MUY chico, ultra cómodo para overlays
+       */
+      const FIT_MARGIN = 3.05;
 
       let dist = (halfH / Math.tan(vFov / 2)) * FIT_MARGIN;
-      dist = THREE.MathUtils.clamp(dist, 3.5, 9.5);
+      dist = THREE.MathUtils.clamp(dist, 5.0, 14.0);
 
-      const lookAt = new THREE.Vector3(center.x, center.y + sizeVec.y * 0.05, center.z);
-      const camPos = new THREE.Vector3(center.x, center.y + sizeVec.y * 0.08, center.z + dist);
+      const lookAt = new THREE.Vector3(center.x, center.y + sizeVec.y * 0.04, center.z);
+      const camPos = new THREE.Vector3(center.x, center.y + sizeVec.y * 0.07, center.z + dist);
 
       persp.position.copy(camPos);
-      persp.near = Math.max(0.05, dist / 200);
-      persp.far = Math.max(50, dist * 15);
+      persp.near = Math.max(0.05, dist / 300);
+      persp.far = Math.max(80, dist * 20);
       persp.lookAt(lookAt);
       persp.updateProjectionMatrix();
 
