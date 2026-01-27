@@ -7,7 +7,7 @@ import {
   makeRecommendation,
   FitResult,
 } from "../motor/fitEngine";
-import { AvatarViewer } from "../3d/AvatarViewer";
+import { MannequinViewer } from "../3d/MannequinViewer";
 
 
 // Small safety net: if the 3D viewer crashes (e.g., avatar URL not found), keep the modal usable.
@@ -768,8 +768,7 @@ const rec = useMemo(
       >
         {avatarUrl && !viewerCrashed ? (
           <>
-            <ViewerErrorBoundary onError={() => setViewerCrashed(true)}
-              ><AvatarViewer avatarUrl={avatarUrl} /></ViewerErrorBoundary>
+            <MannequinViewer variant="male" />
             <FitOverlay fit={fitUi} viewMode={viewMode} footLength={footLength} />
           </>
         ) : (
