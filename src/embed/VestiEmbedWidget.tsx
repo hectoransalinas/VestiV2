@@ -175,10 +175,18 @@ function shoeOverlayFromFit(fit: any, footLength: number): {
   if (Array.isArray(lengths)) {
     const z = lengths.find((lz) => lz?.zone === "pieLargo");
     const s = z?.status as string | undefined;
-    if (s) {
+        if (s) {
+      // Aceptamos tanto estados crudos del motor (Corto/Largo) como normalizados para UI (Ajustado/Grande)
       if (s === "Perfecto") return { label: "Perfecto", statusKey: "Perfecto" };
-      if (s === "Corto") return { label: "Ajustado", statusKey: "Ajustado" };
-      if (s === "Largo") return { label: "Grande", statusKey: "Holgado" };
+
+      if (s === "Corto" || s === "Ajustado" || s === "Justo") {
+        return { label: "Ajustado", statusKey: "Ajustado" };
+      }
+
+      if (s === "Largo" || s === "Grande" || s === "Holgado") {
+        return { label: "Grande", statusKey: "Holgado" };
+      }
+
       // fallback: si viene algo inesperado, lo mostramos pero en amarillo
       return { label: String(s), statusKey: "Holgado" };
     }
