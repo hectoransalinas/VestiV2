@@ -1,120 +1,71 @@
-import React, { useLayoutEffect, useMemo, useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 
-export type MannequinVariant = "male" | "female";
+type Variant = "male" | "female";
 
-export type MannequinViewerProps = {
-  variant?: MannequinVariant;
+type Props = {
+  variant?: Variant;
 };
 
-/**
- * Modelos internos (no externos): se sirven desde /public/models
- * - public/models/mannequin_m.glb
- * - public/models/mannequin_f.glb
- */
-const MODEL_URLS: Record<MannequinVariant, string> = {
-  male: "/models/mannequin_m.glb",
-  female: "/models/mannequin_f.glb",
-};
-
-function normalizeToGrey(scene: THREE.Object3D) {
-  scene.traverse((obj) => {
-    const mesh = obj as THREE.Mesh;
-    if (!mesh.isMesh) return;
-
-    // Sombra suave (podés desactivarla si preferís)
-    mesh.castShadow = false;
-    mesh.receiveShadow = false;
-
-    const mat = mesh.material as any;
-    const grey = new THREE.Color("#d1d5db");
-
-    // Reemplazamos cualquier material por uno simple, mate y premium
-    const next = new THREE.MeshStandardMaterial({
-      color: grey,
-      roughness: 0.9,
-      metalness: 0.05,
-    });
-
-    // Si el mesh tenía skinning (rig), mantenemos la flag
-    (next as any).skinning = Boolean((mat as any)?.skinning);
-
-    mesh.material = next;
-  });
-}
-
-const MannequinModel: React.FC<{ variant: MannequinVariant }> = ({ variant }) => {
-  const url = MODEL_URLS[variant];
+const MannequinModel: React.FC<{ url: string }> = ({ url }) => {
+  const group = useRef<THREE.Group>(null!);
   const gltf = useGLTF(url) as any;
 
-  const groupRef = useRef<THREE.Group>(null);
+  useEffect(() => {
+    if (!group.current) return;
 
-  // Clonamos la escena para no mutar cache global de useGLTF
-  const scene = useMemo<THREE.Object3D>(() => {
-    const cloned = gltf.scene.clone(true);
-    normalizeToGrey(cloned);
-    return cloned;
-  }, [gltf.scene]);
+    // Compute bounds
+    const box = new THREE.Box3().setFromObject(group.current);
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    box.getSize(size);
+    box.getCenter(center);
 
-  useLayoutEffect(() => {
-    const group = groupRef.current;
-    if (!group) return;
+    // Center model
+    group.current.position.sub(center);
 
-    // Centrado y escala estable (sin depender del viewport)
-    const box = new THREE.Box3().setFromObject(scene);
-    const center = box.getCenter(new THREE.Vector3());
-    const size = box.getSize(new THREE.Vector3());
+    // Scale to target height (meters)
+    const TARGET_HEIGHT = 1.75;
+    const scale = TARGET_HEIGHT / (size.y || 1);
+    group.current.scale.setScalar(scale);
 
-    // Reposiciona para que el centro quede en el origen
-    scene.position.sub(center);
-
-    // Apoya el modelo en el "piso" (Y = 0)
-    const box2 = new THREE.Box3().setFromObject(scene);
+    // Place feet on ground (y = 0)
+    const box2 = new THREE.Box3().setFromObject(group.current);
     const minY = box2.min.y;
-    scene.position.y -= minY;
+    group.current.position.y -= minY;
 
-    // Escalamos a altura objetivo ~1.75m (ajustable)
-    const height = Math.max(0.0001, size.y);
-    const targetHeight = 1.75;
-    const scale = targetHeight / height;
-    scene.scale.setScalar(scale);
+    // Slight forward offset so it sits nicely in camera
+    group.current.position.z = 0;
+  }, [gltf]);
 
-    // Ubicación final dentro del canvas
-    group.position.set(0, -0.02, 0);
-  }, [scene]);
-
-  return (
-    <group ref={groupRef}>
-      <primitive object={scene} />
-    </group>
-  );
+  return <primitive ref={group} object={gltf.scene} />;
 };
 
-export const MannequinViewer: React.FC<MannequinViewerProps> = ({ variant = "male" }) => {
+export const MannequinViewer: React.FC<Props> = ({ variant = "male" }) => {
+  const url = variant === "female" ? "/models/mannequin_f.glb" : "/models/mannequin_m.glb";
+
   return (
     <Canvas
-      camera={{ position: [0, 1.35, 2.55], fov: 38 }}
+      camera={{ position: [0, 1.5, 2.6], fov: 35 }}
       style={{ width: "100%", height: "100%" }}
-      gl={{ antialias: true }}
     >
       <color attach="background" args={["#f9fafb"]} />
 
-      <ambientLight intensity={0.7} />
-      <directionalLight intensity={0.9} position={[2.5, 4, 3]} />
-      <directionalLight intensity={0.35} position={[-3, 2, -2]} />
+      <hemisphereLight intensity={0.9} groundColor="#d1d5db" />
+      <directionalLight position={[2, 4, 3]} intensity={0.9} />
+      <directionalLight position={[-3, 2, -2]} intensity={0.4} />
 
-      <MannequinModel variant={variant} />
+      <MannequinModel url={url} />
 
-      {/* Cámara fija (sin pan/zoom). Si querés permitir rotación leve, enableRotate={true} */}
-      <OrbitControls enablePan={false} enableZoom={false} enableRotate={false} />
+      <OrbitControls
+        enablePan={false}
+        enableZoom={false}
+        enableRotate={false}
+      />
     </Canvas>
   );
 };
 
 export default MannequinViewer;
-
-// Precarga (opcional) para evitar flash en el primer render
-useGLTF.preload("/models/mannequin_m.glb");
-useGLTF.preload("/models/mannequin_f.glb");
