@@ -67,6 +67,21 @@ function zoneColor(status: string): string {
   }
 }
 
+
+function chipBorderColor(status: string): string {
+  switch (status) {
+    case "Perfecto":
+      return "#16a34a"; // verde
+    case "Justo":
+    case "Ajustado":
+      return "#dc2626"; // rojo
+    case "Holgado":
+    case "Grande":
+    default:
+      return "#eab308"; // amarillo
+  }
+}
+
 // Mapeo de zona -> posición vertical (porcentaje sobre alto del visor)
 const widthTopPercent: Record<string, string> = {
   hombros: "33%", // un poco más abajo
@@ -488,7 +503,7 @@ const rec = useMemo(
         garment: prenda,
         fit: fitUi,
       }),
-    [categoria, prenda, fit]
+    [categoria, prenda, fitUi]
   );
 
   // Suscribirse a eventos de ReadyPlayerMe
@@ -680,7 +695,7 @@ const rec = useMemo(
             style={{
               padding: "4px 8px",
               borderRadius: 999,
-              border: "1px solid #e5e7eb",
+              border: `1px solid ${chipBorderColor(lz.status)}`,
               background: creandoAvatar ? "#eef2ff" : "#f9fafb",
             }}
           >
@@ -982,7 +997,7 @@ const rec = useMemo(
                         padding: "4px 8px",
                         borderRadius: 999,
                         backgroundColor: "#f9fafb",
-                        border: "1px solid #e5e7eb",
+                        border: `1px solid ${chipBorderColor(lz.status)}`,
                       }}
                     >
                       {lz.zone === "largoTorso"
@@ -993,19 +1008,22 @@ const rec = useMemo(
                       : {lz.status}
                     </span>
                   ))}
-                  {viewMode === "shoes" && (
-                    <span
-                      style={{
-                        fontSize: 11,
-                        padding: "4px 8px",
-                        borderRadius: 999,
-                        backgroundColor: "#f9fafb",
-                        border: "1px solid #e5e7eb",
-                      }}
-                    >
-                      largo pie: {shoeOverlayFromFit(fit, footLength).label}
-                    </span>
-                  )}
+                  {viewMode === "shoes" && (() => {
+                    const shoeChip = shoeOverlayFromFit(fitUi, footLength);
+                    return (
+                      <span
+                        style={{
+                          fontSize: 11,
+                          padding: "4px 8px",
+                          borderRadius: 999,
+                          backgroundColor: "#f9fafb",
+                          border: `1px solid ${chipBorderColor(shoeChip.label === "Perfecto" ? "Perfecto" : shoeChip.label)}`,
+                        }}
+                      >
+                        pieLargo: {shoeChip.label}
+                      </span>
+                    );
+                  })()}
                 </>
               );
             })()}
