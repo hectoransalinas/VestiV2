@@ -67,64 +67,6 @@ function zoneColor(status: string): string {
   }
 }
 
-
-// -------------------- Helpers de calce (incluye shoes) --------------------
-
-function getFitZoneStatus(fit: any, zone: string): string | null {
-  if (!fit) return null;
-
-  // fitEngine en algunas versiones expone lengths como array; lo manejamos de forma defensiva.
-  const lengths: any = (fit as any).lengths;
-  if (Array.isArray(lengths)) {
-    const found = lengths.find((lz) => lz?.zone === zone);
-    return (found?.status as string) ?? null;
-  }
-
-  // fallback por si alguna build expone objeto
-  if (lengths && typeof lengths === "object") {
-    const z = (lengths as any)[zone];
-    return (z?.status as string) ?? null;
-  }
-
-  return null;
-}
-
-function shoeStatusLabelFromRaw(statusRaw: string | null): {
-  label: string;
-  // Usamos estas keys porque zoneColor ya entiende Perfecto/Ajustado/Holgado
-  statusKey: "Perfecto" | "Ajustado" | "Holgado";
-} {
-  if (!statusRaw) return { label: "Sin datos", statusKey: "Holgado" };
-
-  // Normalización: el motor puede devolver Ajustado/Holgado (general) o Corto/Largo (específico shoes)
-  const s = String(statusRaw);
-
-  if (s === "Perfecto") return { label: "Perfecto", statusKey: "Perfecto" };
-
-  if (s === "Corto" || s === "Ajustado" || s === "Justo") {
-    return { label: "Corto", statusKey: "Ajustado" };
-  }
-
-  if (s === "Largo" || s === "Holgado") {
-    return { label: "Largo", statusKey: "Holgado" };
-  }
-
-  // fallback: mostrar lo que venga pero con color amarillo
-  return { label: s, statusKey: "Holgado" };
-}
-
-function shoeOverlayFromFitOrFootLength(fit: any, footLength: number): {
-  label: string;
-  statusKey: "Perfecto" | "Ajustado" | "Holgado";
-} {
-  const statusRaw = getFitZoneStatus(fit, "pieLargo");
-  if (statusRaw) return shoeStatusLabelFromRaw(statusRaw);
-
-  // fallback (por compatibilidad): si todavía no hay zona "pieLargo", usamos la heurística
-  return shoeFitFromFootLength(footLength);
-}
-
-
 // Mapeo de zona -> posición vertical (porcentaje sobre alto del visor)
 const widthTopPercent: Record<string, string> = {
   hombros: "33%", // un poco más abajo
@@ -189,8 +131,8 @@ function shoeFitFromFootLength(lenCm: number): {
     statusKey === "Perfecto"
       ? "Perfecto"
       : statusKey === "Ajustado"
-      ? "Corto"
-      : "Largo";
+      ? "Ajustado"
+      : "Grande";
 
   if (!euSize) {
     return { label: statusText, statusKey };
@@ -202,6 +144,34 @@ function shoeFitFromFootLength(lenCm: number): {
   };
 }
 
+
+// Si el motor expone la zona "pieLargo" (lengths), la usamos como fuente de verdad.
+// Mapeo de motor -> UI:
+//   Corto   -> Ajustado
+//   Perfecto-> Perfecto
+//   Largo   -> Grande
+function shoeOverlayFromFit(fit: any, footLength: number): {
+  label: string;
+  statusKey: "Perfecto" | "Ajustado" | "Holgado";
+} {
+  const lengths: any = (fit as any)?.lengths;
+
+  // lengths suele ser array: [{ zone: "pieLargo", status: "Corto" | "Perfecto" | "Largo", ...}]
+  if (Array.isArray(lengths)) {
+    const z = lengths.find((lz) => lz?.zone === "pieLargo");
+    const s = z?.status as string | undefined;
+    if (s) {
+      if (s === "Perfecto") return { label: "Perfecto", statusKey: "Perfecto" };
+      if (s === "Corto") return { label: "Ajustado", statusKey: "Ajustado" };
+      if (s === "Largo") return { label: "Grande", statusKey: "Holgado" };
+      // fallback: si viene algo inesperado, lo mostramos pero en amarillo
+      return { label: String(s), statusKey: "Holgado" };
+    }
+  }
+
+  // Fallback: si no está la zona, usamos la heurística por largo de pie (compatible con builds viejas)
+  return shoeFitFromFootLength(footLength);
+}
 const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
   if (!fit && viewMode !== "shoes") return null;
 
@@ -244,7 +214,7 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
     return null;
   }
 
-  const shoeFit = shoeOverlayFromFitOrFootLength(fit, footLength);
+  const shoeFit = shoeOverlayFromFit(fit, footLength);
   const shoeColor = zoneColor(shoeFit.statusKey);
 
   return (
@@ -481,12 +451,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
   const lastPayloadRef = useRef<string | null>(null);
   const [footLength, setFootLength] = useState<number>(26);
 
-  const userForFit = useMemo(
-    () => (viewMode === "shoes" ? ({ ...user, pieLargo: footLength } as any) : user),
-    [user, viewMode, footLength]
-  );
-
-  const fit = useMemo(() => computeFit(userForFit, prenda), [userForFit, prenda]);
+  const fit = useMemo(() => computeFit(user, prenda), [user, prenda]);
 
   const rec = useMemo(
     () =>
@@ -900,7 +865,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
           {/* Tarjeta de recomendación */}
           {viewMode === "shoes" ? (
             (() => {
-              const shoe = shoeOverlayFromFitOrFootLength(fit, footLength);
+              const shoe = shoeFitFromFootLength(footLength);
               const euSize = mapFootToEuSize(footLength);
               const bg =
                 shoe.statusKey === "Perfecto"
@@ -1010,7 +975,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
                         border: "1px solid #e5e7eb",
                       }}
                     >
-                      largo pie: {shoeOverlayFromFitOrFootLength(fit, footLength).label}
+                      largo pie: {shoeOverlayFromFit(fit, footLength).label}
                     </span>
                   )}
                 </>
