@@ -7,29 +7,7 @@ import {
   makeRecommendation,
   FitResult,
 } from "../motor/fitEngine";
-import { AvatarViewer } from "../3d/AvatarViewer";
-
-
-// Small safety net: if the 3D viewer crashes (e.g., avatar URL not found), keep the modal usable.
-class ViewerErrorBoundary extends React.Component<
-  { children: React.ReactNode; onError?: (e: unknown) => void },
-  { hasError: boolean }
-> {
-  state = { hasError: false };
-
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-
-  componentDidCatch(error: unknown) {
-    this.props.onError?.(error);
-  }
-
-  render() {
-    if (this.state.hasError) return null;
-    return this.props.children as any;
-  }
-}
+import { MannequinViewer } from "../3d/MannequinViewer";
 
 type VestiEmbedProps = {
   categoria: GarmentCategory;
@@ -40,7 +18,7 @@ type VestiEmbedProps = {
     recommendation: ReturnType<typeof makeRecommendation>;
     user: Measurements;
     garment: Garment;
-    "": string;
+
   }) => void;
 };
 
@@ -175,10 +153,18 @@ function shoeOverlayFromFit(fit: any, footLength: number): {
   if (Array.isArray(lengths)) {
     const z = lengths.find((lz) => lz?.zone === "pieLargo");
     const s = z?.status as string | undefined;
-    if (s) {
+        if (s) {
+      // Aceptamos tanto estados crudos del motor (Corto/Largo) como normalizados para UI (Ajustado/Grande)
       if (s === "Perfecto") return { label: "Perfecto", statusKey: "Perfecto" };
-      if (s === "Corto") return { label: "Ajustado", statusKey: "Ajustado" };
-      if (s === "Largo") return { label: "Grande", statusKey: "Holgado" };
+
+      if (s === "Corto" || s === "Ajustado" || s === "Justo") {
+        return { label: "Ajustado", statusKey: "Ajustado" };
+      }
+
+      if (s === "Largo" || s === "Grande" || s === "Holgado") {
+        return { label: "Grande", statusKey: "Holgado" };
+      }
+
       // fallback: si viene algo inesperado, lo mostramos pero en amarillo
       return { label: String(s), statusKey: "Holgado" };
     }
@@ -289,14 +275,14 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
             }}
           >
             <span style={{ fontSize: 10.5, fontWeight: 600, color: "#0f172a" }}>
-              {z.zone.toUpperCase(
+              {z.zone.toUpperCase()}
             </span>
             <span style={{ fontSize: 10.5, fontWeight: 500, color: "#0f172a" }}>
               {z.status}
             </span>
           </div>
         );
-      }
+      })}
 
       {/* Indicadores verticales de largo (torso / pierna) */}
       {lengthZones.map((lz) => {
@@ -362,7 +348,7 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
             </div>
           </React.Fragment>
         );
-      }
+      })}
 
       {/* Overlay específico para calzado */}
       {hasShoeOverlay && (
@@ -401,8 +387,8 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
             <span style={{ fontWeight: 600 }}>Calce calzado:</span>
             <span>{shoeFit.label}</span>
           </div>
-        
-      
+        </>
+      )}
     </div>
   );
 };
@@ -446,11 +432,15 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
   onRecomendacion,
 }) => {
   const [user, setUser] = useState<Measurements>(perfilInicial ?? defaultPerfil);
-        
+  
+  
+  
+  
+
   useEffect(() => {
     // If user changes avatar, try rendering again.
     setViewerCrashed(false);
-  }, [""]);
+  }, [avatarUrl]);
 
   const isSizeGuideMode = useMemo(() => {
     try {
@@ -521,7 +511,7 @@ const rec = useMemo(
       if (data.eventName === "v1.avatar.exported") {
         const url = data.data?.url;
         if (url && typeof url === "string") {
-          ;
+          setAvatarUrl(url);
           setShowCreatorHelp(false);
         }
       }
@@ -596,7 +586,7 @@ const rec = useMemo(
       recommendation: rec,
       user,
       garment: prenda,
-      "",
+
     };
 
     const serialized = JSON.stringify(payload);
@@ -604,7 +594,7 @@ const rec = useMemo(
 
     lastPayloadRef.current = serialized;
     onRecomendacion(payload);
-  }, [fitUi, rec, user, prenda, "", onRecomendacion]);
+  }, [fitUi, rec, user, prenda, onRecomendacion]);
 
   const handleChange =
     (field: keyof Measurements) => (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -617,7 +607,7 @@ const rec = useMemo(
     setFootLength(isNaN(val) ? 0 : val);
   };
 
-  const creandoAvatar = !"";
+  const creandoAvatar = false;
 
   // UI de recomendación (solo modo app; en sizeguide ya la mostramos en el panel izquierdo)
   const isOk = rec.tag === "OK";
@@ -684,7 +674,33 @@ const rec = useMemo(
         fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
       }}
     >
-            {/* Selector de tipo de prenda (solo modo app/demo; en sizeguide viene desde Shopify) */}
+      {/* Paso a paso (solo modo app/demo) */}
+      {!isSizeGuideMode && (
+        <div style={{ display: "flex", gap: 4, marginBottom: 4, fontSize: 12 }}>
+          <span
+            style={{
+              padding: "4px 8px",
+              borderRadius: 999,
+              border: `1px solid ${chipBorderColor(lz.status)}`,
+              background: creandoAvatar ? "#eef2ff" : "#f9fafb",
+            }}
+          >
+            1 · Creá tu avatar (subí una selfie)
+          </span>
+          <span
+            style={{
+              padding: "4px 8px",
+              borderRadius: 999,
+              border: "1px solid #e5e7eb",
+              background: !creandoAvatar ? "#ecfdf3" : "#f9fafb",
+            }}
+          >
+            2 · Visualizá el calce recomendado
+          </span>
+        </div>
+      )}
+
+      {/* Selector de tipo de prenda (solo modo app/demo; en sizeguide viene desde Shopify) */}
       {!isSizeGuideMode && (
         <div style={{ display: "flex", gap: 6, marginBottom: 4, fontSize: 11 }}>
           {([
@@ -697,7 +713,7 @@ const rec = useMemo(
               <button
                 key={mode}
                 type="button"
-                onClick={() => setViewMode(mode
+                onClick={() => setViewMode(mode)}
                 style={{
                   flex: 1,
                   padding: "4px 6px",
@@ -712,12 +728,11 @@ const rec = useMemo(
                 {label}
               </button>
             );
-          }
+          })}
         </div>
-      
+      )}
 
-      
-      {/* Panel principal 3D */}
+      {/* Panel principal 3D / Creador embebido */}
       <div
         style={{
           width: "100%",
@@ -729,14 +744,26 @@ const rec = useMemo(
           position: "relative",
         }}
       >
-        {/* Visor interno: mannequin de referencia */}
-        <MannequinViewer variant="male" />
-        <FitOverlay fit={fitUi} viewMode={viewMode} footLength={footLength} />
-      </div>
-
+        (
+          <>
+            <MannequinViewer variant="male" />
+            <FitOverlay fit={fitUi} viewMode={viewMode} footLength={footLength} />
+          </>
+        )
+            <iframe
+              ref={iframeRef}
+              title="Creador de avatar ReadyPlayerMe"
+              src="https://readyplayer.me/avatar?frameApi"
+              style={{ width: "100%", height: "100%", border: "none" }}
+              allow="camera *; microphone *; clipboard-write"
+            />
+            ()
+          ) : (
+            <div style={{ marginTop: 4, padding: 12, borderRadius: 12, background: recBg, border: recBorder }}>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{recTitle}</div>
               <div style={{ fontSize: 12, color: "#4b5563" }}>{recBody}</div>
             </div>
-          
+          )}
 
           {/* Vista rápida por zonas */}
           <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
@@ -781,7 +808,7 @@ const rec = useMemo(
                     >
                       {z.zone}: {z.status}
                     </span>
-                  )
+                  ))}
                   {lengthBadges.map((lz) => (
                     <span
                       key={lz.zone}
@@ -790,7 +817,7 @@ const rec = useMemo(
                         padding: "4px 8px",
                         borderRadius: 999,
                         backgroundColor: "#f9fafb",
-                        border: `1px solid ${chipBorderColor(lz.status`,
+                        border: `1px solid ${chipBorderColor(lz.status)}`,
                       }}
                     >
                       {lz.zone === "largoTorso"
@@ -800,7 +827,7 @@ const rec = useMemo(
                         : lz.zone}
                       : {lz.status}
                     </span>
-                  )
+                  ))}
                   {viewMode === "shoes" && (() => {
                     const shoeChip = shoeOverlayFromFit(fitUi, footLength);
                     return (
@@ -810,19 +837,19 @@ const rec = useMemo(
                           padding: "4px 8px",
                           borderRadius: 999,
                           backgroundColor: "#f9fafb",
-                          border: `1px solid ${chipBorderColor(shoeChip.label === "Perfecto" ? "Perfecto" : shoeChip.label`,
+                          border: `1px solid ${chipBorderColor(shoeChip.label === "Perfecto" ? "Perfecto" : shoeChip.label)}`,
                         }}
                       >
                         pieLargo: {shoeChip.label}
                       </span>
                     );
-                  })(
-                
+                  })()}
+                </>
               );
-            })(
+            })()}
           </div>
-        
-      
+        </>
+      )}
     </div>
   );
 };
