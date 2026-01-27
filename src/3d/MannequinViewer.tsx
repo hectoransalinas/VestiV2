@@ -10,21 +10,14 @@ type Props = {
 };
 
 /**
- * MannequinViewer — Framing M/F consistente
+ * MannequinViewer — Framing M/F consistente (V3)
  *
- * Problema que queda:
- * - F se ve perfecto, pero M queda "alto" (menos aire en la cabeza).
- *
- * Causa:
- * - Usar center.y (del bounding box) para componer la cámara hace que,
- *   si el modelo tiene distribución distinta (hombros/pecho más masivos, cabeza distinta),
- *   el "centro" cambie y el encuadre vertical quede diferente.
+ * Ajuste pedido:
+ * - "M sigue alto, tiene que estar más abajo"
  *
  * Fix:
- * - Después de poner pies en y=0, usamos el BOX min/max para anclar la composición:
- *   - lookAtY y camY se calculan como fracción de la altura desde el piso (minY),
- *     no desde el centro.
- * - Mantiene el fit por altura/ancho + aspect CLAMPEADO para que M no se salga lateralmente.
+ * - Bajamos la composición vertical (lookAtY/camY) anclada desde el piso (minY),
+ *   usando coeficientes más bajos.
  *
  * CONTROL DE TAMAÑO:
  * - FIT_MARGIN (más grande = mannequin más chico)
@@ -113,22 +106,19 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
       const halfW = Math.max(0.0001, sizeVec.x / 2);
       const distW = halfW / Math.tan(hFov / 2);
 
-      // Tamaño final
+      // Tamaño final (se mantiene)
       const FIT_MARGIN = 9;
 
       let dist = Math.max(distV, distW) * FIT_MARGIN;
       dist = THREE.MathUtils.clamp(dist, 12, 45);
 
       /**
-       * ✅ COMPOSICIÓN VERTICAL CONSISTENTE (clave del fix)
-       * En vez de usar center.y, anclamos desde el piso:
-       * - lookAt ~ mitad superior del torso
-       * - camY un poco más arriba para "premium headroom"
-       *
-       * Estos coeficientes están elegidos para que M quede igual que F.
+       * ✅ COMPOSICIÓN VERTICAL (BAJADA)
+       * Antes (V2): lookAt 0.56 / cam 0.60
+       * Ahora (V3): lookAt 0.50 / cam 0.54  → baja el modelo en pantalla (más aire arriba)
        */
-      const lookAtY = minY + height * 0.56;
-      const camY = minY + height * 0.60;
+      const lookAtY = minY + height * 0.50;
+      const camY = minY + height * 0.54;
 
       const lookAt = new THREE.Vector3(center.x, lookAtY, center.z);
       const camPos = new THREE.Vector3(center.x, camY, center.z + dist);
