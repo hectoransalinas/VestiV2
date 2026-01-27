@@ -10,21 +10,19 @@ type Props = {
 };
 
 /**
- * MannequinViewer — Framing M/F consistente (V4 - BAJADA FUERTE)
+ * MannequinViewer — Framing definitivo M/F (SOLUCIÓN)
  *
- * Pedido explícito:
- * - "hace una bajada más fuerte, que se note el cambio"
- * - M sigue cortando un pedazo de cabeza → falta headroom
+ * Lo que estaba pasando (clave):
+ * - Estabas moviendo camY y lookAtY juntos => cambiaba el tilt en una dirección que, en cámara 3D,
+ *   puede hacer que el modelo "suba" en pantalla en lugar de bajar.
  *
- * Fix V4:
- * - Bajada fuerte de composición vertical anclada desde el piso:
- *   - lookAtY = 0.40 * height
- *   - camY   = 0.44 * height
+ * Fix correcto:
+ * - Composición vertical anclada desde el piso (minY), NO desde center.y.
+ * - Para "bajar" el modelo en pantalla y ganar headroom: BAJAMOS camY PERO mantenemos lookAtY más alto.
+ *   (camY < lookAtY) => tilt up => el modelo baja en el encuadre.
  *
- * Esto baja al maniquí en pantalla y agrega aire arriba (headroom).
- *
- * CONTROL DE TAMAÑO:
- * - FIT_MARGIN (más grande = mannequin más chico)
+ * Tamaño:
+ * - FIT_MARGIN = 9 (como venías usando para tamaño ideal)
  */
 const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
   const root = useRef<THREE.Group>(null);
@@ -65,7 +63,7 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
     const normalizeAndFrame = () => {
       if (!root.current) return;
 
-      // 1) Normalizar modelo
+      // 1) Normalizar modelo (altura consistente + pies en y=0)
       const rawBox = new THREE.Box3().setFromObject(root.current);
       const rawSize = new THREE.Vector3();
       const rawCenter = new THREE.Vector3();
@@ -78,9 +76,8 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
       const scale = TARGET_HEIGHT / (rawSize.y || 1);
       root.current.scale.setScalar(scale);
 
-      // Feet on y=0
       const boxAfterScale = new THREE.Box3().setFromObject(root.current);
-      root.current.position.y -= boxAfterScale.min.y;
+      root.current.position.y -= boxAfterScale.min.y; // feet on y=0
 
       // 2) Bounds finales
       const box = new THREE.Box3().setFromObject(root.current);
@@ -98,11 +95,11 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
 
       const vFov = (persp.fov * Math.PI) / 180;
 
-      // Fit por altura
+      // Distancia requerida por altura
       const halfH = Math.max(0.0001, sizeVec.y / 2);
       const distV = halfH / Math.tan(vFov / 2);
 
-      // Fit por ancho (aspect clamped para estabilidad en modal)
+      // Distancia requerida por ancho (aspect clamped para estabilidad en modal/scroll)
       const rawAspect = size.width / Math.max(1, size.height);
       const aspect = THREE.MathUtils.clamp(rawAspect, 1.15, 1.85);
       const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
@@ -110,15 +107,24 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
       const halfW = Math.max(0.0001, sizeVec.x / 2);
       const distW = halfW / Math.tan(hFov / 2);
 
-      // Tamaño final (se mantiene)
+      // Tamaño final (más grande = mannequin más chico)
       const FIT_MARGIN = 9;
 
       let dist = Math.max(distV, distW) * FIT_MARGIN;
       dist = THREE.MathUtils.clamp(dist, 12, 45);
 
-      // ✅ BAJADA FUERTE (que se note)
-      const lookAtY = minY + height * 0.40;
-      const camY = minY + height * 0.44;
+      /**
+       * ✅ COMPOSICIÓN VERTICAL DEFINITIVA
+       * Queremos MÁS headroom (que no corte cabeza en M) y que el modelo quede "más abajo" como F.
+       *
+       * Regla:
+       * - lookAtY alto (torso)
+       * - camY bastante más bajo (tilt up) => el modelo baja en la pantalla y aparece aire arriba.
+       *
+       * Estos coeficientes son un salto fuerte y visible vs lo anterior.
+       */
+      const lookAtY = minY + height * 0.62;
+      const camY = minY + height * 0.38;
 
       const lookAt = new THREE.Vector3(center.x, lookAtY, center.z);
       const camPos = new THREE.Vector3(center.x, camY, center.z + dist);
@@ -137,6 +143,7 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
       invalidate();
     };
 
+    // 2 RAF para asegurar size estable en modal/iframe (scrollbars)
     const raf1 = requestAnimationFrame(() => {
       const raf2 = requestAnimationFrame(() => normalizeAndFrame());
       (normalizeAndFrame as any)._raf2 = raf2;
