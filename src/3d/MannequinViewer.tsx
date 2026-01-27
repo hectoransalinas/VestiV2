@@ -10,19 +10,24 @@ type Props = {
 };
 
 /**
- * MannequinViewer — Framing definitivo M/F (SOLUCIÓN)
+ * MannequinViewer — Framing M/F consistente (CALIBRADO POR VARIANTE)
  *
- * Lo que estaba pasando (clave):
- * - Estabas moviendo camY y lookAtY juntos => cambiaba el tilt en una dirección que, en cámara 3D,
- *   puede hacer que el modelo "suba" en pantalla en lugar de bajar.
+ * Problema real (según tus capturas):
+ * - Si bajamos M, F baja todavía más.
+ * - Esto pasa porque ambos modelos NO tienen la misma proporción/volumen en el bounding box (cabeza/hombros),
+ *   y una sola regla de composición vertical afecta distinto a cada uno.
  *
- * Fix correcto:
- * - Composición vertical anclada desde el piso (minY), NO desde center.y.
- * - Para "bajar" el modelo en pantalla y ganar headroom: BAJAMOS camY PERO mantenemos lookAtY más alto.
- *   (camY < lookAtY) => tilt up => el modelo baja en el encuadre.
+ * Solución práctica (y estable):
+ * ✅ Mantenemos:
+ *   - normalización de altura (TARGET_HEIGHT)
+ *   - pies en y=0
+ *   - distancia por FIT (altura/ancho) + FIT_MARGIN (tamaño ideal)
  *
- * Tamaño:
- * - FIT_MARGIN = 9 (como venías usando para tamaño ideal)
+ * ✅ Cambiamos SOLO la composición vertical con un "calibrado por variante":
+ *   - Female: composición que te queda “perfecta” (no la tocamos con ajustes para Male)
+ *   - Male: composición con MÁS headroom (modelo un poco más abajo)
+ *
+ * Esto cierra el Paso 1 y nos deja una base estable para anclar overlays.
  */
 const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
   const root = useRef<THREE.Group>(null);
@@ -42,6 +47,8 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
 
   useEffect(() => {
     if (!root.current) return;
+
+    const isMale = url.includes("mannequin_m");
 
     root.current.clear();
     root.current.position.set(0, 0, 0);
@@ -99,7 +106,7 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
       const halfH = Math.max(0.0001, sizeVec.y / 2);
       const distV = halfH / Math.tan(vFov / 2);
 
-      // Distancia requerida por ancho (aspect clamped para estabilidad en modal/scroll)
+      // Distancia requerida por ancho (aspect CLAMPEADO para estabilidad en modal/scroll)
       const rawAspect = size.width / Math.max(1, size.height);
       const aspect = THREE.MathUtils.clamp(rawAspect, 1.15, 1.85);
       const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
@@ -114,17 +121,21 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
       dist = THREE.MathUtils.clamp(dist, 12, 45);
 
       /**
-       * ✅ COMPOSICIÓN VERTICAL DEFINITIVA
-       * Queremos MÁS headroom (que no corte cabeza en M) y que el modelo quede "más abajo" como F.
+       * ✅ CALIBRADO POR VARIANTE (LA CLAVE)
+       * - Female: mantener más centrado (como tu captura “perfecta”)
+       * - Male: más abajo + más headroom (evitar cabeza tocando)
        *
-       * Regla:
-       * - lookAtY alto (torso)
-       * - camY bastante más bajo (tilt up) => el modelo baja en la pantalla y aparece aire arriba.
-       *
-       * Estos coeficientes son un salto fuerte y visible vs lo anterior.
+       * Nota: estos coeficientes NO cambian el tamaño (eso lo controla FIT_MARGIN),
+       * solo la composición vertical.
        */
-      const lookAtY = minY + height * 0.62;
-      const camY = minY + height * 0.38;
+      const femaleLookAtCoef = 0.58;
+      const femaleCamCoef = 0.46;
+
+      const maleLookAtCoef = 0.64;
+      const maleCamCoef = 0.34;
+
+      const lookAtY = minY + height * (isMale ? maleLookAtCoef : femaleLookAtCoef);
+      const camY = minY + height * (isMale ? maleCamCoef : femaleCamCoef);
 
       const lookAt = new THREE.Vector3(center.x, lookAtY, center.z);
       const camPos = new THREE.Vector3(center.x, camY, center.z + dist);
@@ -154,7 +165,7 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
       const raf2 = (normalizeAndFrame as any)?._raf2;
       if (raf2) cancelAnimationFrame(raf2);
     };
-  }, [gltf, premiumMaterial, camera, size.width, size.height, invalidate]);
+  }, [gltf, premiumMaterial, camera, size.width, size.height, invalidate, url]);
 
   return (
     <>
