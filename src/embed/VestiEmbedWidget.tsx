@@ -924,8 +924,8 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
                     {shoe.statusKey === "Perfecto"
                       ? "Este talle es ideal para tu largo de pie. Si preferís un calce más holgado, podés probar medio número más."
                       : shoe.statusKey === "Ajustado"
-                      ? "Este talle puede quedarte algo justo de largo. Si te gusta el calce relajado, te conviene un número más."
-                      : "Este talle puede quedarte algo largo. Si querés un calce más ajustado, probá un número menos."}
+                      ? "Este talle puede quedarte ajustado. Si te gusta el calce relajado, te conviene un número más."
+                      : "Este talle puede quedarte grande. Si querés un calce más ajustado, probá un número menos."}
                   </div>
                 </div>
               );
