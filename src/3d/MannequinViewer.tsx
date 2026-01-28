@@ -1,241 +1,213 @@
-import React, { useEffect, useMemo, useRef } from "react";
-import { Canvas, useThree } from "@react-three/fiber";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 
-type Variant = "male" | "female";
+/**
+ * MannequinViewer
+ * - Carga GLB interno (male/female)
+ * - Fuerza material gris mate "premium"
+ * - Normaliza posición: pies al piso (minY = 0)
+ * - Auto-encuadra cámara para ver CUERPO COMPLETO sin depender del bounding box del mesh
+ *   (usa rango Y de TODOS los huesos / bones)
+ *
+ * NOTA: Esta versión está diseñada para evitar el bug clásico de "solo piernas" o "cuerpo cortado"
+ *       cuando los bounds del SkinnedMesh son incorrectos o cambian entre M/F.
+ */
 
-type Props = {
-  variant?: Variant;
+type Sex = "m" | "f";
+
+const MODEL_PATHS: Record<Sex, string> = {
+  m: "/models/mannequin_m.glb",
+  f: "/models/mannequin_f.glb",
 };
 
-/**
- * MannequinViewer — Anchor por HUESOS (Plan A definitivo)
- *
- * Por qué esto sí resuelve:
- * - Con bounding-box/center.y M y F nunca van a quedar “centrados igual” porque sus proporciones difieren.
- * - Estos GLB son rigged: tienen bones. Usamos bones para definir 2 anchors:
- *   - topAnchor: cabeza (Head/Neck)
- *   - bottomAnchor: pies (Foot/Ankle/Toe)
- * - Centramos el encuadre usando el midpoint entre head y feet, y calculamos la distancia para que entren.
- *
- * Resultado:
- * ✅ M y F centrados en el contenedor
- * ✅ Tamaño estable y sin crop (sin “solo piernas”)
- * ✅ Base real para overlays por zonas
- */
-const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
-  const root = useRef<THREE.Group>(null);
-  const controlsRef = useRef<any>(null);
-  const gltf = useGLTF(url) as any;
-  const { camera, size, invalidate } = useThree();
+const MAT = new THREE.MeshStandardMaterial({
+  color: new THREE.Color("#8b8f97"),
+  roughness: 0.85,
+  metalness: 0.06,
+});
 
-  const premiumMaterial = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: new THREE.Color("#bfc5cc"),
-        roughness: 0.95,
-        metalness: 0.0,
-      }),
-    []
-  );
+function forceMaterial(root: THREE.Object3D) {
+  root.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (mesh && (mesh as any).isMesh) {
+      (mesh as any).material = MAT;
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
+    }
+  });
+}
 
-  const nameMatchers = useMemo(
-    () => ({
-      head: [
-        /(^|\b)(head)(\b|$)/i,
-        /(mixamorig:)?head/i,
-        /(^|\b)(neck)(\b|$)/i,
-        /(mixamorig:)?neck/i,
-      ],
-      feet: [
-        /(foot|ankle|toe)/i,
-        /(mixamorig:)?leftfoot/i,
-        /(mixamorig:)?rightfoot/i,
-        /foot_l/i,
-        /foot_r/i,
-        /ankle_l/i,
-        /ankle_r/i,
-        /toe_l/i,
-        /toe_r/i,
-      ],
-    }),
-    []
-  );
+function collectBones(root: THREE.Object3D): THREE.Bone[] {
+  const bones: THREE.Bone[] = [];
+  root.traverse((o) => {
+    if ((o as any).isBone) bones.push(o as THREE.Bone);
+  });
+  return bones;
+}
+
+function computeBoneBoundsY(root: THREE.Object3D) {
+  const bones = collectBones(root);
+  const v = new THREE.Vector3();
+  let minY = Infinity;
+  let maxY = -Infinity;
+  let maxR = 0;
+
+  // Si por alguna razón no hay bones, devolvemos null para fallback
+  if (!bones.length) return null;
+
+  for (const b of bones) {
+    b.getWorldPosition(v);
+    minY = Math.min(minY, v.y);
+    maxY = Math.max(maxY, v.y);
+
+    // radio horizontal aproximado usando bones (mejor que nada, súper estable entre M/F)
+    const r = Math.hypot(v.x, v.z);
+    maxR = Math.max(maxR, r);
+  }
+
+  return { minY, maxY, maxR };
+}
+
+function AutoFitCamera({ subjectRef }: { subjectRef: React.RefObject<THREE.Object3D> }) {
+  const { camera, size } = useThree();
+  const lastKey = useRef<string>("");
 
   useEffect(() => {
-    if (!root.current) return;
+    // Aseguramos perspectiva
+    if (!(camera as any).isPerspectiveCamera) return;
+    camera.near = 0.05;
+    camera.far = 200;
+    camera.updateProjectionMatrix();
+  }, [camera]);
 
-    root.current.clear();
-    root.current.position.set(0, 0, 0);
-    root.current.rotation.set(0, 0, 0);
-    root.current.scale.set(1, 1, 1);
+  useEffect(() => {
+    const subject = subjectRef.current;
+    if (!subject) return;
 
-    const sceneClone: THREE.Object3D = gltf.scene.clone(true);
+    // Normalizamos pies al piso ANTES de encuadrar
+    const bounds = computeBoneBoundsY(subject);
+    if (bounds) {
+      // llevamos minY a 0 ajustando el root
+      // OJO: estamos modificando subject.position.y
+      subject.position.y += -bounds.minY;
+      subject.updateMatrixWorld(true);
+    }
+  }, [subjectRef]);
 
-    sceneClone.traverse((obj: any) => {
-      if (obj?.isMesh) {
-        obj.material = premiumMaterial;
-        obj.castShadow = false;
-        obj.receiveShadow = false;
-      }
-    });
+  useEffect(() => {
+    const subject = subjectRef.current;
+    if (!subject) return;
+    const cam = camera as THREE.PerspectiveCamera;
 
-    root.current.add(sceneClone);
+    const bounds = computeBoneBoundsY(subject);
 
-    const pickBone = (regexes: RegExp[]): THREE.Bone | null => {
-      let best: THREE.Bone | null = null;
+    // Fallback si algo raro: usamos Box3 clásico
+    let minY: number, maxY: number, maxR: number;
+    if (bounds) {
+      minY = bounds.minY;
+      maxY = bounds.maxY;
+      maxR = Math.max(bounds.maxR, 0.25);
+    } else {
+      const box = new THREE.Box3().setFromObject(subject);
+      const sizeV = new THREE.Vector3();
+      box.getSize(sizeV);
+      const c = new THREE.Vector3();
+      box.getCenter(c);
+      minY = c.y - sizeV.y / 2;
+      maxY = c.y + sizeV.y / 2;
+      maxR = Math.max(sizeV.x, sizeV.z) / 2;
+    }
 
-      root.current?.traverse((obj: any) => {
-        if (!obj?.isBone) return;
-        const n = String(obj.name || "");
-        if (regexes.some((r) => r.test(n))) {
-          // Preferimos el bone más alto (para head) o más bajo (para feet) según regexes.
-          if (!best) {
-            best = obj as THREE.Bone;
-          } else {
-            const a = new THREE.Vector3();
-            const b = new THREE.Vector3();
-            (best as any).getWorldPosition(a);
-            (obj as any).getWorldPosition(b);
-            // Heurística: si estamos buscando head, nos quedamos con el más alto
-            if (regexes === nameMatchers.head) {
-              if (b.y > a.y) best = obj as THREE.Bone;
-            } else {
-              // feet: quedarnos con el más bajo
-              if (b.y < a.y) best = obj as THREE.Bone;
-            }
-          }
-        }
-      });
+    // Como ya ajustamos pies al piso, recomputamos en el espacio actual
+    // (minY debería ser ~0)
+    subject.updateMatrixWorld(true);
+    const bounds2 = computeBoneBoundsY(subject);
+    if (bounds2) {
+      minY = bounds2.minY;
+      maxY = bounds2.maxY;
+      maxR = Math.max(bounds2.maxR, maxR);
+    }
 
-      return best;
-    };
+    const height = Math.max(0.5, maxY - minY);
+    const centerY = minY + height / 2;
 
-    const fitAndFrame = () => {
-      if (!root.current) return;
+    // Queremos ver todo el cuerpo: limitante por alto y por ancho (aspect)
+    const aspect = size.width / Math.max(1, size.height);
+    const vFov = THREE.MathUtils.degToRad(cam.fov);
+    const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
 
-      // 1) Bounds pre-transform
-      const rawBox = new THREE.Box3().setFromObject(root.current);
-      const rawSize = new THREE.Vector3();
-      const rawCenter = new THREE.Vector3();
-      rawBox.getSize(rawSize);
-      rawBox.getCenter(rawCenter);
+    const margin = 1.18; // margen visual (subilo si querés más aire)
+    const distForHeight = (height / 2) / Math.tan(vFov / 2);
+    const distForWidth = (maxR * 1.35) / Math.tan(hFov / 2); // ancho aproximado
+    const dist = Math.max(distForHeight, distForWidth) * margin;
 
-      // 2) Center at origin
-      root.current.position.sub(rawCenter);
+    // Cámara frontal levemente elevada
+    const target = new THREE.Vector3(0, centerY, 0);
+    const pos = new THREE.Vector3(0, centerY + height * 0.04, dist);
 
-      // 3) Normalize height (stable between M/F)
-      const TARGET_HEIGHT = 1.75;
-      const scale = TARGET_HEIGHT / (rawSize.y || 1);
-      root.current.scale.setScalar(scale);
+    // Evitamos recalcular si no cambió (M/F + resize)
+    const key = `${size.width}x${size.height}|${height.toFixed(3)}|${maxR.toFixed(3)}|${centerY.toFixed(3)}`;
+    if (key === lastKey.current) return;
+    lastKey.current = key;
 
-      // 4) Feet on ground via bounds (robust even if feet bones are weird)
-      const boxAfterScale = new THREE.Box3().setFromObject(root.current);
-      root.current.position.y -= boxAfterScale.min.y;
+    cam.position.copy(pos);
+    cam.lookAt(target);
+    cam.updateProjectionMatrix();
+  }, [camera, size.width, size.height, subjectRef]);
 
-      // 5) Final bounds
-      const box = new THREE.Box3().setFromObject(root.current);
-      const sizeVec = new THREE.Vector3();
-      const center = new THREE.Vector3();
-      box.getSize(sizeVec);
-      box.getCenter(center);
+  return null;
+}
 
-      const minY = box.min.y;
-      const maxY = box.max.y;
+function MannequinModel({ sex, rootRef }: { sex: Sex; rootRef: React.RefObject<THREE.Object3D> }) {
+  const { scene } = useGLTF(MODEL_PATHS[sex]);
 
-      // 6) Bone anchors (fallback to bounds if not found)
-      const headBone = pickBone(nameMatchers.head);
-      const feetBone = pickBone(nameMatchers.feet);
+  // Clonamos para evitar compartir estado entre renders (importantísimo)
+  const cloned = useMemo(() => scene.clone(true), [scene]);
 
-      const headPos = new THREE.Vector3(center.x, maxY, center.z);
-      const feetPos = new THREE.Vector3(center.x, minY, center.z);
+  useEffect(() => {
+    forceMaterial(cloned);
+  }, [cloned]);
 
-      if (headBone) headBone.getWorldPosition(headPos);
-      if (feetBone) feetBone.getWorldPosition(feetPos);
+  return <primitive ref={rootRef as any} object={cloned} />;
+}
 
-      // Si feetBone no es el más bajo real, clamp a minY para no perder pies
-      feetPos.y = Math.min(feetPos.y, minY);
-
-      const span = Math.max(0.0001, headPos.y - feetPos.y);
-      const midY = feetPos.y + span * 0.5;
-
-      const persp = camera as THREE.PerspectiveCamera;
-      persp.fov = 35;
-
-      const vFov = (persp.fov * Math.PI) / 180;
-
-      // Aspect clamped (importante con modal ancho)
-      const rawAspect = size.width / Math.max(1, size.height);
-      const aspect = THREE.MathUtils.clamp(rawAspect, 1.2, 1.85);
-      const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
-
-      // Distancia requerida para que entre el cuerpo (por anchors), y también por ancho
-      const halfSpan = span / 2;
-      const distV = halfSpan / Math.tan(vFov / 2);
-
-      const halfW = Math.max(0.0001, sizeVec.x / 2);
-      const distH = halfW / Math.tan(hFov / 2);
-
-      // 🔥 Tamaño: un knob seguro
-      // Más grande = menor offset (más cerca). No bajar demasiado para evitar “solo piernas”.
-      const FIT_OFFSET = 1.26;
-
-      let dist = Math.max(distV, distH) * FIT_OFFSET;
-      dist = THREE.MathUtils.clamp(dist, 10, 42);
-
-      // ✅ Centramos en el contenedor: lookAt al midpoint real (bones)
-      const lookAt = new THREE.Vector3(center.x, midY, center.z);
-      const camPos = new THREE.Vector3(center.x, midY, center.z + dist);
-
-      persp.position.copy(camPos);
-      persp.near = Math.max(0.05, dist / 200);
-      persp.far = Math.max(220, dist * 30);
-      persp.lookAt(lookAt);
-      persp.updateProjectionMatrix();
-
-      if (controlsRef.current) {
-        controlsRef.current.target.copy(lookAt);
-        controlsRef.current.update();
-      }
-
-      invalidate();
-    };
-
-    const raf1 = requestAnimationFrame(() => {
-      const raf2 = requestAnimationFrame(() => fitAndFrame());
-      (fitAndFrame as any)._raf2 = raf2;
-    });
-
-    return () => {
-      cancelAnimationFrame(raf1);
-      const raf2 = (fitAndFrame as any)?._raf2;
-      if (raf2) cancelAnimationFrame(raf2);
-    };
-  }, [gltf, premiumMaterial, camera, size.width, size.height, invalidate, url, nameMatchers]);
+export default function MannequinViewer({
+  sex = "m",
+  showControls = false,
+}: {
+  sex?: Sex;
+  showControls?: boolean;
+}) {
+  const rootRef = useRef<THREE.Object3D>(null);
 
   return (
-    <>
-      <group ref={root as any} />
-      <OrbitControls ref={controlsRef} enablePan={false} enableZoom={false} enableRotate={false} />
-    </>
+    <div style={{ width: "100%", height: "100%", position: "relative" }}>
+      <Canvas
+        camera={{ fov: 28, position: [0, 1, 4] }}
+        gl={{ antialias: true, alpha: true }}
+      >
+        <ambientLight intensity={0.85} />
+        <directionalLight position={[3, 6, 4]} intensity={0.75} />
+        <group>
+          <MannequinModel sex={sex} rootRef={rootRef} />
+        </group>
+
+        <AutoFitCamera subjectRef={rootRef} />
+
+        {showControls ? (
+          <OrbitControls
+            enablePan={false}
+            enableZoom={false}
+            enableRotate={false}
+            target={[0, 1, 0]}
+          />
+        ) : null}
+      </Canvas>
+    </div>
   );
-};
+}
 
-export const MannequinViewer: React.FC<Props> = ({ variant = "male" }) => {
-  const url = variant === "female" ? "/models/mannequin_f.glb" : "/models/mannequin_m.glb";
-
-  return (
-    <Canvas camera={{ position: [0, 1.5, 3.0], fov: 35 }} style={{ width: "100%", height: "100%" }}>
-      <color attach="background" args={["#f9fafb"]} />
-
-      <hemisphereLight intensity={0.95} groundColor="#d1d5db" />
-      <directionalLight position={[2, 4, 3]} intensity={0.9} />
-      <directionalLight position={[-3, 2, -2]} intensity={0.35} />
-
-      <MannequinScene url={url} />
-    </Canvas>
-  );
-};
-
-export default MannequinViewer;
+useGLTF.preload(MODEL_PATHS.m);
+useGLTF.preload(MODEL_PATHS.f);
