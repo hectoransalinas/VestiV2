@@ -10,18 +10,19 @@ type Props = {
 };
 
 /**
- * MannequinViewer — Stable Fit + Centered Composition (NO crop)
+ * MannequinViewer — Anchor por HUESOS (Plan A definitivo)
  *
- * Lo que te pasó en la captura (quedó “gigante”):
- * - Bajamos el FIT_OFFSET (distancia) demasiado -> cámara MUY cerca => sólo piernas/pies.
- * - Además, al mirar exactamente al centro del bounding box, el encuadre pierde “headroom”
- *   y se siente alto/extraño según la proporción del modelo.
+ * Por qué esto sí resuelve:
+ * - Con bounding-box/center.y M y F nunca van a quedar “centrados igual” porque sus proporciones difieren.
+ * - Estos GLB son rigged: tienen bones. Usamos bones para definir 2 anchors:
+ *   - topAnchor: cabeza (Head/Neck)
+ *   - bottomAnchor: pies (Foot/Ankle/Toe)
+ * - Centramos el encuadre usando el midpoint entre head y feet, y calculamos la distancia para que entren.
  *
- * Fix:
- * 1) Fit estable: distancia se calcula para que ENTRE el cuerpo completo (sin crop).
- * 2) Control de “tamaño” en pantalla: un solo knob (FIT_OFFSET) con valores seguros.
- * 3) Composición centrada REAL: target entre piso y cabeza, con un leve sesgo configurable,
- *    sin depender de center.y (que cambia distinto entre M/F).
+ * Resultado:
+ * ✅ M y F centrados en el contenedor
+ * ✅ Tamaño estable y sin crop (sin “solo piernas”)
+ * ✅ Base real para overlays por zonas
  */
 const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
   const root = useRef<THREE.Group>(null);
@@ -39,12 +40,33 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
     []
   );
 
+  const nameMatchers = useMemo(
+    () => ({
+      head: [
+        /(^|\b)(head)(\b|$)/i,
+        /(mixamorig:)?head/i,
+        /(^|\b)(neck)(\b|$)/i,
+        /(mixamorig:)?neck/i,
+      ],
+      feet: [
+        /(foot|ankle|toe)/i,
+        /(mixamorig:)?leftfoot/i,
+        /(mixamorig:)?rightfoot/i,
+        /foot_l/i,
+        /foot_r/i,
+        /ankle_l/i,
+        /ankle_r/i,
+        /toe_l/i,
+        /toe_r/i,
+      ],
+    }),
+    []
+  );
+
   useEffect(() => {
     if (!root.current) return;
 
     root.current.clear();
-
-    // Reset transforms (critical for clean bounds when toggling M/F)
     root.current.position.set(0, 0, 0);
     root.current.rotation.set(0, 0, 0);
     root.current.scale.set(1, 1, 1);
@@ -60,6 +82,35 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
     });
 
     root.current.add(sceneClone);
+
+    const pickBone = (regexes: RegExp[]): THREE.Bone | null => {
+      let best: THREE.Bone | null = null;
+
+      root.current?.traverse((obj: any) => {
+        if (!obj?.isBone) return;
+        const n = String(obj.name || "");
+        if (regexes.some((r) => r.test(n))) {
+          // Preferimos el bone más alto (para head) o más bajo (para feet) según regexes.
+          if (!best) {
+            best = obj as THREE.Bone;
+          } else {
+            const a = new THREE.Vector3();
+            const b = new THREE.Vector3();
+            (best as any).getWorldPosition(a);
+            (obj as any).getWorldPosition(b);
+            // Heurística: si estamos buscando head, nos quedamos con el más alto
+            if (regexes === nameMatchers.head) {
+              if (b.y > a.y) best = obj as THREE.Bone;
+            } else {
+              // feet: quedarnos con el más bajo
+              if (b.y < a.y) best = obj as THREE.Bone;
+            }
+          }
+        }
+      });
+
+      return best;
+    };
 
     const fitAndFrame = () => {
       if (!root.current) return;
@@ -79,7 +130,7 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
       const scale = TARGET_HEIGHT / (rawSize.y || 1);
       root.current.scale.setScalar(scale);
 
-      // 4) Feet on ground
+      // 4) Feet on ground via bounds (robust even if feet bones are weird)
       const boxAfterScale = new THREE.Box3().setFromObject(root.current);
       root.current.position.y -= boxAfterScale.min.y;
 
@@ -92,49 +143,50 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
 
       const minY = box.min.y;
       const maxY = box.max.y;
-      const height = Math.max(0.0001, maxY - minY);
+
+      // 6) Bone anchors (fallback to bounds if not found)
+      const headBone = pickBone(nameMatchers.head);
+      const feetBone = pickBone(nameMatchers.feet);
+
+      const headPos = new THREE.Vector3(center.x, maxY, center.z);
+      const feetPos = new THREE.Vector3(center.x, minY, center.z);
+
+      if (headBone) headBone.getWorldPosition(headPos);
+      if (feetBone) feetBone.getWorldPosition(feetPos);
+
+      // Si feetBone no es el más bajo real, clamp a minY para no perder pies
+      feetPos.y = Math.min(feetPos.y, minY);
+
+      const span = Math.max(0.0001, headPos.y - feetPos.y);
+      const midY = feetPos.y + span * 0.5;
 
       const persp = camera as THREE.PerspectiveCamera;
       persp.fov = 35;
 
       const vFov = (persp.fov * Math.PI) / 180;
 
-      // Aspect clamped (muy importante con el contenedor nuevo y modal ancho)
+      // Aspect clamped (importante con modal ancho)
       const rawAspect = size.width / Math.max(1, size.height);
       const aspect = THREE.MathUtils.clamp(rawAspect, 1.2, 1.85);
       const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
 
-      const halfH = Math.max(0.0001, sizeVec.y / 2);
-      const halfW = Math.max(0.0001, sizeVec.x / 2);
+      // Distancia requerida para que entre el cuerpo (por anchors), y también por ancho
+      const halfSpan = span / 2;
+      const distV = halfSpan / Math.tan(vFov / 2);
 
-      const distV = halfH / Math.tan(vFov / 2);
+      const halfW = Math.max(0.0001, sizeVec.x / 2);
       const distH = halfW / Math.tan(hFov / 2);
 
-      // ✅ Tamaño en pantalla: un solo knob seguro.
-      // Más grande => más lejos => maniquí más chico.
-      // Más chico => más cerca => maniquí más grande.
-      //
-      // Tu pedido era “bajar a 5.5”, pero en la práctica nos dejó demasiado cerca (gigante).
-      // Acá lo dejamos AGRESIVO pero seguro: 1.22 (más grande que 1.32, pero sin crop).
-      const FIT_OFFSET = 1.22;
+      // 🔥 Tamaño: un knob seguro
+      // Más grande = menor offset (más cerca). No bajar demasiado para evitar “solo piernas”.
+      const FIT_OFFSET = 1.26;
 
       let dist = Math.max(distV, distH) * FIT_OFFSET;
-      dist = THREE.MathUtils.clamp(dist, 10, 40);
+      dist = THREE.MathUtils.clamp(dist, 10, 42);
 
-      // ✅ Composición centrada en el contenedor (sin quedar alto)
-      // Centramos el cuerpo completo: 50% del alto desde el piso.
-      // Y ajustamos M vs F con un micro sesgo (solo vertical) para que queden parecidos.
-      const isMale = url.includes("mannequin_m");
-      const centerCoef = 0.50;
-
-      // micro-ajuste (NO gigante): M suele quedar “alto” por proporciones -> bajamos un poco su target
-      const micro = isMale ? -0.04 : 0.0;
-
-      const lookAtY = minY + height * (centerCoef + micro);
-      const camY = lookAtY;
-
-      const lookAt = new THREE.Vector3(center.x, lookAtY, center.z);
-      const camPos = new THREE.Vector3(center.x, camY, center.z + dist);
+      // ✅ Centramos en el contenedor: lookAt al midpoint real (bones)
+      const lookAt = new THREE.Vector3(center.x, midY, center.z);
+      const camPos = new THREE.Vector3(center.x, midY, center.z + dist);
 
       persp.position.copy(camPos);
       persp.near = Math.max(0.05, dist / 200);
@@ -160,7 +212,7 @@ const MannequinScene: React.FC<{ url: string }> = ({ url }) => {
       const raf2 = (fitAndFrame as any)?._raf2;
       if (raf2) cancelAnimationFrame(raf2);
     };
-  }, [gltf, premiumMaterial, camera, size.width, size.height, invalidate, url]);
+  }, [gltf, premiumMaterial, camera, size.width, size.height, invalidate, url, nameMatchers]);
 
   return (
     <>
