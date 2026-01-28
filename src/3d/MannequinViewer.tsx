@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect, useMemo, useRef } from "react";
+import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { Canvas, useThree } from "@react-three/fiber";
 import { Environment, useGLTF } from "@react-three/drei";
@@ -11,18 +11,15 @@ const MODEL_PATHS: Record<Sex, string> = {
   f: "/models/mannequin_f.glb",
 };
 
-// --- Fixed "Nike/Adidas" framing (NO auto-fit, NO resize-based recompute) ---
+// ✅ Fixed camera "Nike/Adidas" style
 const CAMERA_FOV = 38;
-// Tuned for a premium, readable full-body shot on a 16:9-ish panel
-const CAMERA_POS = new THREE.Vector3(0, 1.05, 2.6);
-// Look slightly above mid-body so the figure "sits" lower in frame and feet are visible
-const CAMERA_LOOK_AT = new THREE.Vector3(0, 0.6, 0);
+// Keep position stable; the lookAt will be driven by torso focus (computed once from model height)
+const CAMERA_POS = new THREE.Vector3(0, 1.25, 2.85);
 
-// Target mannequin height in meters (approx). We normalize model scale ONCE per load,
-// but we do NOT change camera based on size.
+// Scale normalization (one-time per load)
 const TARGET_HEIGHT: Record<Sex, number> = { m: 1.75, f: 1.68 };
 
-// Locator names embedded in the GLB (Option A)
+// Locator names (Option A models)
 const LOC = {
   head: "vesti_head",
   feet: "vesti_feet",
@@ -36,51 +33,6 @@ function resolveSex(variant?: Variant, sex?: Sex): Sex {
   return v.startsWith("f") ? "f" : "m";
 }
 
-/**
- * Applies a premium matte material and disables cast/receive shadow flicker
- * (we keep it simple and stable).
- */
-function forcePremiumMaterial(root: THREE.Object3D) {
-  root.traverse((obj) => {
-    const mesh = obj as THREE.Mesh;
-    if (!mesh.isMesh) return;
-
-    // Ensure stable frustum culling behavior for skinned meshes / thin parts
-    mesh.frustumCulled = false;
-
-    // Keep original material if it's already MeshStandardMaterial-like,
-    // otherwise replace with a stable matte standard material.
-    const matAny = mesh.material as any;
-    const keep =
-      matAny &&
-      (matAny.isMeshStandardMaterial ||
-        matAny.isMeshPhysicalMaterial ||
-        matAny.isMeshLambertMaterial ||
-        matAny.isMeshPhongMaterial);
-
-    if (!keep) {
-      mesh.material = new THREE.MeshStandardMaterial({
-        color: new THREE.Color("#8b8f97"),
-        roughness: 0.85,
-        metalness: 0.05,
-      });
-    } else {
-      // Normalize for a clean "Shopify premium" matte look
-      try {
-        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-        mats.forEach((m: any) => {
-          if (!m) return;
-          if (m.color) m.color = new THREE.Color("#8b8f97");
-          if (typeof m.roughness === "number") m.roughness = 0.85;
-          if (typeof m.metalness === "number") m.metalness = 0.05;
-        });
-      } catch {
-        // no-op
-      }
-    }
-  });
-}
-
 function findByName(root: THREE.Object3D, name: string): THREE.Object3D | null {
   let found: THREE.Object3D | null = null;
   root.traverse((o) => {
@@ -90,13 +42,49 @@ function findByName(root: THREE.Object3D, name: string): THREE.Object3D | null {
   return found;
 }
 
-function MannequinModel({ sex }: { sex: Sex }) {
+function forcePremiumMaterial(root: THREE.Object3D) {
+  root.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (!mesh.isMesh) return;
+
+    mesh.frustumCulled = false;
+
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    mats.forEach((m: any) => {
+      if (!m) return;
+      // Matte premium gray
+      if (m.color) m.color = new THREE.Color("#8b8f97");
+      if (typeof m.roughness === "number") m.roughness = 0.85;
+      if (typeof m.metalness === "number") m.metalness = 0.05;
+      m.needsUpdate = true;
+    });
+
+    // If material is something exotic, replace for stability
+    const anyMat = mesh.material as any;
+    const keep =
+      anyMat &&
+      (anyMat.isMeshStandardMaterial || anyMat.isMeshPhysicalMaterial || anyMat.isMeshLambertMaterial || anyMat.isMeshPhongMaterial);
+    if (!keep) {
+      mesh.material = new THREE.MeshStandardMaterial({
+        color: new THREE.Color("#8b8f97"),
+        roughness: 0.85,
+        metalness: 0.05,
+      });
+    }
+  });
+}
+
+/**
+ * Mannequin model:
+ * - Loads GLB
+ * - Scales to target height (once)
+ * - Places feet at y=0 (once)
+ * - Centers X/Z (once)
+ * - Computes a stable torso focus point: y = height * 0.55
+ */
+function MannequinModel({ sex, onFocusY }: { sex: Sex; onFocusY: (y: number) => void }) {
   const groupRef = useRef<THREE.Group>(null);
-
-  // IMPORTANT: use sex prop here (not any outer variable)
   const { scene } = useGLTF(MODEL_PATHS[sex]) as unknown as { scene: THREE.Group };
-
-  // Clone to avoid mutating cached glTF scene across mounts
   const root = useMemo(() => scene.clone(true), [scene]);
 
   useEffect(() => {
@@ -104,50 +92,43 @@ function MannequinModel({ sex }: { sex: Sex }) {
 
     forcePremiumMaterial(root);
 
-    // ---- Normalize transform deterministically (ONCE per load) ----
-    // 1) Prefer locators for head/feet. If missing, fall back to Box3.
     const head = findByName(root, LOC.head);
     const feet = findByName(root, LOC.feet);
 
-    let height = 0;
-    let feetY = 0;
-
+    // --- 1) Measure initial height ---
+    let h = 0;
     if (head && feet) {
-      const pHead = new THREE.Vector3();
-      const pFeet = new THREE.Vector3();
-      head.getWorldPosition(pHead);
-      feet.getWorldPosition(pFeet);
-      height = Math.max(0.0001, pHead.y - pFeet.y);
-      feetY = pFeet.y;
+      const a = new THREE.Vector3();
+      const b = new THREE.Vector3();
+      head.getWorldPosition(a);
+      feet.getWorldPosition(b);
+      h = Math.max(0.0001, a.y - b.y);
     } else {
       const box = new THREE.Box3().setFromObject(root);
       const size = new THREE.Vector3();
       box.getSize(size);
-      height = Math.max(0.0001, size.y);
-      feetY = box.min.y;
+      h = Math.max(0.0001, size.y);
     }
 
-    // 2) Scale to target height (stable, NOT dependent on container)
-    const s = TARGET_HEIGHT[sex] / height;
+    // --- 2) Scale to target height (stable) ---
+    const s = TARGET_HEIGHT[sex] / h;
     root.scale.setScalar(s);
-
-    // 3) After scaling, re-evaluate feetY and center X/Z for stable placement
     root.updateMatrixWorld(true);
 
-    // feet to y=0
+    // --- 3) Feet to floor (y=0) ---
     let feetWorldY = 0;
     if (feet) {
-      const pFeet2 = new THREE.Vector3();
-      feet.getWorldPosition(pFeet2);
-      feetWorldY = pFeet2.y;
+      const p = new THREE.Vector3();
+      feet.getWorldPosition(p);
+      feetWorldY = p.y;
     } else {
-      const box2 = new THREE.Box3().setFromObject(root);
-      feetWorldY = box2.min.y;
+      const box = new THREE.Box3().setFromObject(root);
+      feetWorldY = box.min.y;
     }
-    // Move the whole root so feet sit on y=0
     root.position.y -= feetWorldY;
+    root.updateMatrixWorld(true);
 
-    // Center X/Z around shoulders (best) else Box3 center
+    // --- 4) Center X/Z using shoulders (best) else Box center ---
     const shL = findByName(root, LOC.shoulderL);
     const shR = findByName(root, LOC.shoulderR);
     if (shL && shR) {
@@ -159,35 +140,56 @@ function MannequinModel({ sex }: { sex: Sex }) {
       root.position.x -= mid.x;
       root.position.z -= mid.z;
     } else {
-      const box3 = new THREE.Box3().setFromObject(root);
-      const center = new THREE.Vector3();
-      box3.getCenter(center);
-      root.position.x -= center.x;
-      root.position.z -= center.z;
+      const box = new THREE.Box3().setFromObject(root);
+      const c = new THREE.Vector3();
+      box.getCenter(c);
+      root.position.x -= c.x;
+      root.position.z -= c.z;
+    }
+    root.updateMatrixWorld(true);
+
+    // --- 5) Compute final height AFTER normalization, and set torso focus ---
+    let finalHeight = 0;
+    if (head && feet) {
+      const a = new THREE.Vector3();
+      const b = new THREE.Vector3();
+      head.getWorldPosition(a);
+      feet.getWorldPosition(b);
+      // feet should be ~0 now, but use diff to be safe
+      finalHeight = Math.max(0.0001, a.y - b.y);
+    } else {
+      const box = new THREE.Box3().setFromObject(root);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      finalHeight = Math.max(0.0001, size.y);
     }
 
-    // Apply into group (fresh)
+    // ✅ Focus on torso: between chest and navel (Nike/Adidas feel)
+    const torsoFocusY = finalHeight * 0.55;
+    onFocusY(torsoFocusY);
+
+    // Mount into group
     groupRef.current.clear();
     groupRef.current.add(root);
-  }, [root, sex]);
+  }, [root, sex, onFocusY]);
 
   return <group ref={groupRef} />;
 }
 
-function FixedCamera() {
+function FixedCamera({ focusY }: { focusY: number }) {
   const { camera } = useThree();
 
   useEffect(() => {
-    // Set once. No resize-based updates.
     camera.position.copy(CAMERA_POS);
     camera.fov = CAMERA_FOV;
     camera.near = 0.1;
     camera.far = 50;
     camera.updateProjectionMatrix();
-    camera.lookAt(CAMERA_LOOK_AT);
+
+    // ✅ This is the only "centering": look at torso.
+    camera.lookAt(0, focusY, 0);
     camera.updateMatrixWorld(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [camera, focusY]);
 
   return null;
 }
@@ -202,6 +204,7 @@ export function MannequinViewer({
   showControls?: boolean;
 }) {
   const resolved = resolveSex(variant, sex);
+  const [focusY, setFocusY] = useState<number>(1.0);
 
   return (
     <Canvas
@@ -210,19 +213,19 @@ export function MannequinViewer({
       camera={{ fov: CAMERA_FOV, position: [CAMERA_POS.x, CAMERA_POS.y, CAMERA_POS.z] }}
       style={{ width: "100%", height: "100%" }}
     >
-      <FixedCamera />
+      <FixedCamera focusY={focusY} />
 
-      {/* Lighting: stable, premium, simple */}
+      {/* Lighting: stable, premium */}
       <ambientLight intensity={0.85} />
       <directionalLight position={[2.5, 4.5, 3]} intensity={0.85} />
       <directionalLight position={[-2.5, 3.5, 2]} intensity={0.35} />
 
       <Suspense fallback={null}>
         <Environment preset="city" />
-        <MannequinModel sex={resolved} />
+        <MannequinModel sex={resolved} onFocusY={setFocusY} />
       </Suspense>
 
-      {/* Controls intentionally disabled for product stability */}
+      {/* Controls disabled intentionally for product stability */}
       {showControls ? null : null}
     </Canvas>
   );
@@ -230,6 +233,5 @@ export function MannequinViewer({
 
 export default MannequinViewer;
 
-// Preload both models for snappy M/F toggles
 useGLTF.preload(MODEL_PATHS.m);
 useGLTF.preload(MODEL_PATHS.f);
