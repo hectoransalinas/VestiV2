@@ -581,7 +581,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
 
                     // Alto visible del panel 3D dentro del modal (entre header y bottom)
           // clamp(min, ideal, max) para que NO quede ni gigante ni enano
-          height: isSizeGuideMode ? "clamp(420px, 62vh, 640px)" : undefined,
+          height: isSizeGuideMode ? "clamp(460px, 68vh, 720px)" : undefined,
 
           // En modo demo/app usamos un ratio horizontal (evita panel excesivamente alto)
 

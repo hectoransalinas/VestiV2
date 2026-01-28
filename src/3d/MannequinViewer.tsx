@@ -139,14 +139,14 @@ function AutoFitCamera({ subjectRef }: { subjectRef: React.RefObject<THREE.Objec
     const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
 
     const margin = 1.18; // margen visual (subilo si querés más aire)
-    const yBias = height * 0.08; // empuja el encuadre hacia arriba => el modelo baja en pantalla
+    const yBias = height * 0.16; // más bias para bajar el modelo dentro del panel
     const distForHeight = (height / 2) / Math.tan(vFov / 2);
     const distForWidth = (maxR * 1.35) / Math.tan(hFov / 2); // ancho aproximado
     const dist = Math.max(distForHeight, distForWidth) * margin;
 
     // Cámara frontal levemente elevada
     const target = new THREE.Vector3(0, centerY + yBias, 0);
-    const pos = new THREE.Vector3(0, centerY + yBias + height * 0.04, dist);
+    const pos = new THREE.Vector3(0, centerY + yBias + height * 0.02, dist);
 
     // Evitamos recalcular si no cambió (M/F + resize)
     const key = `${size.width}x${size.height}|${height.toFixed(3)}|${maxR.toFixed(3)}|${centerY.toFixed(3)}|${yBias.toFixed(3)}`;
