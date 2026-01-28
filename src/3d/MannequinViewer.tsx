@@ -132,7 +132,7 @@ function AutoFitCamera({ subjectRef, sex }: { subjectRef: React.RefObject<THREE.
     const yBias = height * 1.05; // base torso focus
 
     // Extra push DOWN in the canvas so feet land near the bottom guideline
-    const frameDown = height * 0.55;
+    const frameDown = height * 1.20;
 
     // approximate horizontal radius from box
     const maxR = Math.max(sz.x, sz.z) / 2;
@@ -142,7 +142,7 @@ function AutoFitCamera({ subjectRef, sex }: { subjectRef: React.RefObject<THREE.
 
     // Strong zoom-out clamp to prevent legs-only/gigante oscillations
     const dist = Math.max(distForHeight, distForWidth) * margin;
-    const clampedDist = Math.max(dist, 11.8);
+    const clampedDist = Math.max(dist, 13.5);
 
     const target = new THREE.Vector3(0, centerY + yBias + frameDown, 0);
     const pos = new THREE.Vector3(0, centerY + yBias + frameDown + height * 0.26, clampedDist);
@@ -212,7 +212,7 @@ export function MannequinViewer({ variant, sex: sexProp = "m", showControls = fa
       <Canvas
         key={`${sex}-${observedSize.w}x${observedSize.h}`}
         style={{ width: "100%", height: "100%" }}
-        camera={{ fov: 44, position: [0, 2.4, 12.0] }}
+        camera={{ fov: 44, position: [0, 2.8, 14.0] }}
         gl={{ antialias: true, alpha: true }}
       >
         <ambientLight intensity={0.85} />
