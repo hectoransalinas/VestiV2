@@ -34,6 +34,10 @@ const TARGET_HEIGHT: Record<Sex, number> = {
   f: 1.68,
 };
 
+// Drops the mannequin visually so feet sit on the UI "floor" line
+const VISUAL_FLOOR_DROP = 0.22;
+
+
 const MAT = new THREE.MeshStandardMaterial({
   color: new THREE.Color("#8b8f97"),
   roughness: 0.85,
@@ -73,6 +77,8 @@ function normalizeModel(root: THREE.Object3D, sex: Sex) {
 
   // 3) Feet to floor (minY -> 0)
   root.position.y += -box2.min.y;
+  // Visual drop so the feet align with the UI floor (yellow line)
+  root.position.y -= VISUAL_FLOOR_DROP;
   root.updateMatrixWorld(true);
 
   // 4) Center X/Z around model center (keeps it in the middle of panel)
@@ -123,7 +129,7 @@ function AutoFitCamera({ subjectRef, sex }: { subjectRef: React.RefObject<THREE.
     const margin = sex === "m" ? 1.55 : 1.48;
 
     // Focus a bit ABOVE center => model goes DOWN in frame (torso focus)
-    const yBias = height * 0.62;
+    const yBias = height * 0.70;
 
     // approximate horizontal radius from box
     const maxR = Math.max(sz.x, sz.z) / 2;
@@ -133,7 +139,7 @@ function AutoFitCamera({ subjectRef, sex }: { subjectRef: React.RefObject<THREE.
 
     // Strong zoom-out clamp to prevent legs-only/gigante oscillations
     const dist = Math.max(distForHeight, distForWidth) * margin;
-    const clampedDist = Math.max(dist, 9.6);
+    const clampedDist = Math.max(dist, 10.4);
 
     const target = new THREE.Vector3(0, centerY + yBias, 0);
     const pos = new THREE.Vector3(0, centerY + yBias + height * 0.18, clampedDist);
