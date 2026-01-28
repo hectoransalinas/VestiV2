@@ -14,7 +14,7 @@ const MODEL_PATHS: Record<Sex, string> = {
 // ✅ Fixed camera "Nike/Adidas" style
 const CAMERA_FOV = 38;
 // Keep position stable; the lookAt will be driven by torso focus (computed once from model height)
-const CAMERA_POS = new THREE.Vector3(0, 1.25, 2.85);
+const CAMERA_POS = new THREE.Vector3(0, 1.45, 3.35);
 
 // Scale normalization (one-time per load)
 const TARGET_HEIGHT: Record<Sex, number> = { m: 1.75, f: 1.68 };
@@ -165,7 +165,7 @@ function MannequinModel({ sex, onFocusY }: { sex: Sex; onFocusY: (y: number) => 
     }
 
     // ✅ Focus on torso: between chest and navel (Nike/Adidas feel)
-    const torsoFocusY = finalHeight * 0.55;
+    const torsoFocusY = finalHeight * 0.78;
     onFocusY(torsoFocusY);
 
     // Mount into group
