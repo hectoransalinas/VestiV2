@@ -183,6 +183,26 @@ export default function MannequinViewer({
 }) {
   const rootRef = useRef<THREE.Object3D>(null);
 
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [resizeTick, setResizeTick] = useState(0);
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+
+    let raf = 0;
+    const ro = new ResizeObserver(() => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => setResizeTick((t) => t + 1));
+    });
+
+    ro.observe(el);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
+  }, []);
+
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
       <Canvas

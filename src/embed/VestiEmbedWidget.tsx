@@ -7,7 +7,7 @@ import {
   makeRecommendation,
   FitResult,
 } from "../motor/fitEngine";
-import MannequinViewer from "../3d/MannequinViewer";
+import { MannequinViewer } from "../3d/MannequinViewer";
 
 type VestiEmbedProps = {
   categoria: GarmentCategory;
@@ -577,22 +577,12 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
       <div
         style={{
           width: "100%",
-          // En sizeguide el alto lo define el contenedor del modal (evita contenedor fantasma gigante)
-
-                    // Alto visible del panel 3D dentro del modal (entre header y bottom)
-          // clamp(min, ideal, max) para que NO quede ni gigante ni enano
-          height: isSizeGuideMode ? "clamp(460px, 68vh, 720px)" : undefined,
-
-          // En modo demo/app usamos un ratio horizontal (evita panel excesivamente alto)
-
-          aspectRatio: isSizeGuideMode ? undefined : "16 / 9",
+          ...(isSizeGuideMode ? {} : { aspectRatio: "9 / 16" }),
           borderRadius: isSizeGuideMode ? 12 : 16,
           overflow: "hidden",
           background: "#f9fafb",
           marginBottom: isSizeGuideMode ? 0 : 8,
           position: "relative",
-          // Clave en layouts flex dentro de modales con overflow
-          minHeight: 0,
         }}
       >
         {/* Toggle M/F mannequin */}
@@ -641,7 +631,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
           </button>
         </div>
 
-        <MannequinViewer sex={mannequinGender === "male" ? "m" : "f"} />
+        <MannequinViewer variant={mannequinGender} />
         <FitOverlay fit={fitUi} viewMode={viewMode} footLength={footLength} />
       </div>
 
