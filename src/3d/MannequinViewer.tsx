@@ -139,7 +139,7 @@ function AutoFitCamera({ subjectRef }: { subjectRef: React.RefObject<THREE.Objec
     const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
 
     const margin = 1.18; // margen visual (subilo si querés más aire)
-    const yBias = height * 0.16; // más bias para bajar el modelo dentro del panel
+    const yBias = height * 0.05; // más bias para bajar el modelo dentro del panel
     const distForHeight = (height / 2) / Math.tan(vFov / 2);
     const distForWidth = (maxR * 1.35) / Math.tan(hFov / 2); // ancho aproximado
     const dist = Math.max(distForHeight, distForWidth) * margin;
