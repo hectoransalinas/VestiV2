@@ -35,7 +35,7 @@ const TARGET_HEIGHT: Record<Sex, number> = {
 };
 
 // Drops the mannequin visually so feet sit on the UI "floor" line
-const VISUAL_FLOOR_DROP = 0.28;
+const VISUAL_FLOOR_DROP = 0.62;
 
 
 const MAT = new THREE.MeshStandardMaterial({
