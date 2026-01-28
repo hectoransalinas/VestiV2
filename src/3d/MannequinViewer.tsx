@@ -174,7 +174,7 @@ function MannequinModel({ sex, rootRef }: { sex: Sex; rootRef: React.RefObject<T
   return <primitive ref={rootRef as any} object={cloned} />;
 }
 
-export type MannequinVariant = "M" | "F" | Sex;
+export type MannequinVariant = "M" | "F" | Sex | "male" | "female";
 
 export interface MannequinViewerProps {
   /** Prefer `variant` ("M"/"F") from the UI. `sex` kept for backwards compat. */
@@ -188,7 +188,12 @@ export function MannequinViewer({
   sex: sexProp = "m",
   showControls = false,
 }: MannequinViewerProps) {
-    const sex: Sex = variant === "F" ? "f" : variant === "M" ? "m" : (variant ?? sexProp);
+    const sex: Sex = (() => {
+    // Aceptamos múltiples valores por robustez (evita crash si entra "male"/"female")
+    if (variant === "F" || variant === "f" || (variant as any) === "female") return "f";
+    if (variant === "M" || variant === "m" || (variant as any) === "male") return "m";
+    return sexProp;
+  })();
 
 const rootRef = useRef<THREE.Object3D>(null);
 

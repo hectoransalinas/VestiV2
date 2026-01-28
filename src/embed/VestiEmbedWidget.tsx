@@ -371,7 +371,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
 
   const [footLength, setFootLength] = useState<number>(26);
 
-  const [mannequinGender, setMannequinGender] = useState<"male" | "female">("male");
+  const [mannequinGender, setMannequinGender] = useState<"M" | "F">("M");
 
   const fit = useMemo(() => computeFit(user, prenda), [user, prenda]);
   const fitUi = useMemo(() => normalizeFitForUi(fit), [fit]);
@@ -599,14 +599,14 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
         >
           <button
             type="button"
-            onClick={() => setMannequinGender("male")}
+            onClick={() => setMannequinGender("M")}
             style={{
               padding: "6px 10px",
               borderRadius: 999,
               border: "1px solid #e5e7eb",
-              background: mannequinGender === "male" ? "#e0f2fe" : "#ffffff",
+              background: mannequinGender === "M" ? "#e0f2fe" : "#ffffff",
               fontSize: 11,
-              fontWeight: mannequinGender === "male" ? 700 : 600,
+              fontWeight: mannequinGender === "M" ? 700 : 600,
               cursor: "pointer",
               boxShadow: "0 2px 8px rgba(15,23,42,0.10)",
             }}
@@ -615,14 +615,14 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => setMannequinGender("female")}
+            onClick={() => setMannequinGender("F")}
             style={{
               padding: "6px 10px",
               borderRadius: 999,
               border: "1px solid #e5e7eb",
-              background: mannequinGender === "female" ? "#e0f2fe" : "#ffffff",
+              background: mannequinGender === "F" ? "#e0f2fe" : "#ffffff",
               fontSize: 11,
-              fontWeight: mannequinGender === "female" ? 700 : 600,
+              fontWeight: mannequinGender === "F" ? 700 : 600,
               cursor: "pointer",
               boxShadow: "0 2px 8px rgba(15,23,42,0.10)",
             }}
