@@ -126,7 +126,7 @@ function AutoFitCamera({ subjectRef, sex }: { subjectRef: React.RefObject<THREE.
     const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
 
     // Give more breathing room + clamp distance so it never goes too close
-    const margin = sex === "m" ? 1.55 : 1.48;
+    const margin = sex === "m" ? 1.82 : 1.72;
 
     // Focus a bit ABOVE center => model goes DOWN in frame (torso focus)
     const yBias = height * 1.05; // base torso focus
