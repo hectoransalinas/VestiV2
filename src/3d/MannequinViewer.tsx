@@ -14,9 +14,9 @@ const MODEL_PATHS: Record<Sex, string> = {
 // --- Fixed "Nike/Adidas" framing (NO auto-fit, NO resize-based recompute) ---
 const CAMERA_FOV = 38;
 // Tuned for a premium, readable full-body shot on a 16:9-ish panel
-const CAMERA_POS = new THREE.Vector3(0, 1.35, 3.15);
+const CAMERA_POS = new THREE.Vector3(0, 1.05, 2.6);
 // Look slightly above mid-body so the figure "sits" lower in frame and feet are visible
-const CAMERA_LOOK_AT = new THREE.Vector3(0, 1.05, 0);
+const CAMERA_LOOK_AT = new THREE.Vector3(0, 0.6, 0);
 
 // Target mannequin height in meters (approx). We normalize model scale ONCE per load,
 // but we do NOT change camera based on size.
