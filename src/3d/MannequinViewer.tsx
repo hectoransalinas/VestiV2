@@ -1,237 +1,235 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Canvas, useThree } from "@react-three/fiber";
-import { OrbitControls, useGLTF } from "@react-three/drei";
+import React, { Suspense, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-
-/**
- * MannequinViewer
- * - Carga GLB interno (male/female)
- * - Fuerza material gris mate "premium"
- * - Normaliza posición: pies al piso (minY = 0)
- * - Auto-encuadra cámara para ver CUERPO COMPLETO sin depender del bounding box del mesh
- *   (usa rango Y de TODOS los huesos / bones)
- *
- * NOTA: Esta versión está diseñada para evitar el bug clásico de "solo piernas" o "cuerpo cortado"
- *       cuando los bounds del SkinnedMesh son incorrectos o cambian entre M/F.
- */
+import { Canvas, useThree } from "@react-three/fiber";
+import { Environment, useGLTF } from "@react-three/drei";
 
 type Sex = "m" | "f";
+type Variant = "M" | "F" | "m" | "f" | "male" | "female";
 
 const MODEL_PATHS: Record<Sex, string> = {
   m: "/models/mannequin_m.glb",
   f: "/models/mannequin_f.glb",
 };
 
-export type MannequinVariant = "M" | "F" | Sex | "male" | "female";
+// --- Fixed "Nike/Adidas" framing (NO auto-fit, NO resize-based recompute) ---
+const CAMERA_FOV = 38;
+// Tuned for a premium, readable full-body shot on a 16:9-ish panel
+const CAMERA_POS = new THREE.Vector3(0, 1.35, 3.15);
+// Look slightly above mid-body so the figure "sits" lower in frame and feet are visible
+const CAMERA_LOOK_AT = new THREE.Vector3(0, 1.05, 0);
 
-export interface MannequinViewerProps {
-  variant?: MannequinVariant;
-  sex?: Sex;
-  showControls?: boolean;
+// Target mannequin height in meters (approx). We normalize model scale ONCE per load,
+// but we do NOT change camera based on size.
+const TARGET_HEIGHT: Record<Sex, number> = { m: 1.75, f: 1.68 };
+
+// Locator names embedded in the GLB (Option A)
+const LOC = {
+  head: "vesti_head",
+  feet: "vesti_feet",
+  shoulderL: "vesti_shoulderL",
+  shoulderR: "vesti_shoulderR",
+};
+
+function resolveSex(variant?: Variant, sex?: Sex): Sex {
+  if (sex === "m" || sex === "f") return sex;
+  const v = (variant || "m").toString().toLowerCase();
+  return v.startsWith("f") ? "f" : "m";
 }
 
-// Resuelve el sexo a partir de "variant" (widget usa "M"/"F") o "sex" (m/f)
-function resolveSex(variant?: MannequinVariant, sex?: Sex): Sex {
-  if (sex) return sex;
-  if (!variant) return "m";
-  const v = String(variant).toLowerCase();
-  if (v === "m" || v === "male") return "m";
-  if (v === "f" || v === "female") return "f";
-  if (variant === "M") return "m";
-  if (variant === "F") return "f";
-  return "m";
-}
+/**
+ * Applies a premium matte material and disables cast/receive shadow flicker
+ * (we keep it simple and stable).
+ */
+function forcePremiumMaterial(root: THREE.Object3D) {
+  root.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (!mesh.isMesh) return;
 
+    // Ensure stable frustum culling behavior for skinned meshes / thin parts
+    mesh.frustumCulled = false;
 
-const MAT = new THREE.MeshStandardMaterial({
-  color: new THREE.Color("#8b8f97"),
-  roughness: 0.85,
-  metalness: 0.06,
-});
+    // Keep original material if it's already MeshStandardMaterial-like,
+    // otherwise replace with a stable matte standard material.
+    const matAny = mesh.material as any;
+    const keep =
+      matAny &&
+      (matAny.isMeshStandardMaterial ||
+        matAny.isMeshPhysicalMaterial ||
+        matAny.isMeshLambertMaterial ||
+        matAny.isMeshPhongMaterial);
 
-function forceMaterial(root: THREE.Object3D) {
-  root.traverse((o) => {
-    const mesh = o as THREE.Mesh;
-    if (mesh && (mesh as any).isMesh) {
-      (mesh as any).material = MAT;
-      mesh.castShadow = false;
-      mesh.receiveShadow = false;
-    }
-  });
-}
-
-function collectBones(root: THREE.Object3D): THREE.Bone[] {
-  const bones: THREE.Bone[] = [];
-  root.traverse((o) => {
-    if ((o as any).isBone) bones.push(o as THREE.Bone);
-  });
-  return bones;
-}
-
-function computeBoneBoundsY(root: THREE.Object3D) {
-  const bones = collectBones(root);
-  const v = new THREE.Vector3();
-  let minY = Infinity;
-  let maxY = -Infinity;
-  let maxR = 0;
-
-  // Si por alguna razón no hay bones, devolvemos null para fallback
-  if (!bones.length) return null;
-
-  for (const b of bones) {
-    b.getWorldPosition(v);
-    minY = Math.min(minY, v.y);
-    maxY = Math.max(maxY, v.y);
-
-    // radio horizontal aproximado usando bones (mejor que nada, súper estable entre M/F)
-    const r = Math.hypot(v.x, v.z);
-    maxR = Math.max(maxR, r);
-  }
-
-  return { minY, maxY, maxR };
-}
-
-function AutoFitCamera({ subjectRef, sex }: { subjectRef: React.RefObject<THREE.Object3D>; sex: Sex }) {
-  const { camera, size } = useThree();
-  const lastKey = useRef<string>("");
-
-  useEffect(() => {
-    // Aseguramos perspectiva
-    if (!(camera as any).isPerspectiveCamera) return;
-    camera.near = 0.05;
-    camera.far = 200;
-    camera.updateProjectionMatrix();
-  }, [camera]);
-
-  useEffect(() => {
-    const subject = subjectRef.current;
-    if (!subject) return;
-
-    // Normalizamos pies al piso ANTES de encuadrar
-    const bounds = computeBoneBoundsY(subject);
-    if (bounds) {
-      // llevamos minY a 0 ajustando el root
-      // OJO: estamos modificando subject.position.y
-      subject.position.y += -bounds.minY;
-      subject.updateMatrixWorld(true);
-    }
-  }, [subjectRef]);
-
-  useEffect(() => {
-    const subject = subjectRef.current;
-    if (!subject) return;
-    const cam = camera as THREE.PerspectiveCamera;
-
-    const bounds = computeBoneBoundsY(subject);
-
-    // Fallback si algo raro: usamos Box3 clásico
-    let minY: number, maxY: number, maxR: number;
-    if (bounds) {
-      minY = bounds.minY;
-      maxY = bounds.maxY;
-      maxR = Math.max(bounds.maxR, 0.25);
+    if (!keep) {
+      mesh.material = new THREE.MeshStandardMaterial({
+        color: new THREE.Color("#8b8f97"),
+        roughness: 0.85,
+        metalness: 0.05,
+      });
     } else {
-      const box = new THREE.Box3().setFromObject(subject);
-      const sizeV = new THREE.Vector3();
-      box.getSize(sizeV);
-      const c = new THREE.Vector3();
-      box.getCenter(c);
-      minY = c.y - sizeV.y / 2;
-      maxY = c.y + sizeV.y / 2;
-      maxR = Math.max(sizeV.x, sizeV.z) / 2;
+      // Normalize for a clean "Shopify premium" matte look
+      try {
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        mats.forEach((m: any) => {
+          if (!m) return;
+          if (m.color) m.color = new THREE.Color("#8b8f97");
+          if (typeof m.roughness === "number") m.roughness = 0.85;
+          if (typeof m.metalness === "number") m.metalness = 0.05;
+        });
+      } catch {
+        // no-op
+      }
+    }
+  });
+}
+
+function findByName(root: THREE.Object3D, name: string): THREE.Object3D | null {
+  let found: THREE.Object3D | null = null;
+  root.traverse((o) => {
+    if (found) return;
+    if (o.name === name) found = o;
+  });
+  return found;
+}
+
+function MannequinModel({ sex }: { sex: Sex }) {
+  const groupRef = useRef<THREE.Group>(null);
+
+  // IMPORTANT: use sex prop here (not any outer variable)
+  const { scene } = useGLTF(MODEL_PATHS[sex]) as unknown as { scene: THREE.Group };
+
+  // Clone to avoid mutating cached glTF scene across mounts
+  const root = useMemo(() => scene.clone(true), [scene]);
+
+  useEffect(() => {
+    if (!groupRef.current) return;
+
+    forcePremiumMaterial(root);
+
+    // ---- Normalize transform deterministically (ONCE per load) ----
+    // 1) Prefer locators for head/feet. If missing, fall back to Box3.
+    const head = findByName(root, LOC.head);
+    const feet = findByName(root, LOC.feet);
+
+    let height = 0;
+    let feetY = 0;
+
+    if (head && feet) {
+      const pHead = new THREE.Vector3();
+      const pFeet = new THREE.Vector3();
+      head.getWorldPosition(pHead);
+      feet.getWorldPosition(pFeet);
+      height = Math.max(0.0001, pHead.y - pFeet.y);
+      feetY = pFeet.y;
+    } else {
+      const box = new THREE.Box3().setFromObject(root);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      height = Math.max(0.0001, size.y);
+      feetY = box.min.y;
     }
 
-    // Como ya ajustamos pies al piso, recomputamos en el espacio actual
-    // (minY debería ser ~0)
-    subject.updateMatrixWorld(true);
-    const bounds2 = computeBoneBoundsY(subject);
-    if (bounds2) {
-      minY = bounds2.minY;
-      maxY = bounds2.maxY;
-      maxR = Math.max(bounds2.maxR, maxR);
+    // 2) Scale to target height (stable, NOT dependent on container)
+    const s = TARGET_HEIGHT[sex] / height;
+    root.scale.setScalar(s);
+
+    // 3) After scaling, re-evaluate feetY and center X/Z for stable placement
+    root.updateMatrixWorld(true);
+
+    // feet to y=0
+    let feetWorldY = 0;
+    if (feet) {
+      const pFeet2 = new THREE.Vector3();
+      feet.getWorldPosition(pFeet2);
+      feetWorldY = pFeet2.y;
+    } else {
+      const box2 = new THREE.Box3().setFromObject(root);
+      feetWorldY = box2.min.y;
+    }
+    // Move the whole root so feet sit on y=0
+    root.position.y -= feetWorldY;
+
+    // Center X/Z around shoulders (best) else Box3 center
+    const shL = findByName(root, LOC.shoulderL);
+    const shR = findByName(root, LOC.shoulderR);
+    if (shL && shR) {
+      const a = new THREE.Vector3();
+      const b = new THREE.Vector3();
+      shL.getWorldPosition(a);
+      shR.getWorldPosition(b);
+      const mid = a.add(b).multiplyScalar(0.5);
+      root.position.x -= mid.x;
+      root.position.z -= mid.z;
+    } else {
+      const box3 = new THREE.Box3().setFromObject(root);
+      const center = new THREE.Vector3();
+      box3.getCenter(center);
+      root.position.x -= center.x;
+      root.position.z -= center.z;
     }
 
-    const height = Math.max(0.5, maxY - minY);
-    const centerY = minY + height / 2;
+    // Apply into group (fresh)
+    groupRef.current.clear();
+    groupRef.current.add(root);
+  }, [root, sex]);
 
-    // Queremos ver todo el cuerpo: limitante por alto y por ancho (aspect)
-    const aspect = size.width / Math.max(1, size.height);
-    const vFov = THREE.MathUtils.degToRad(cam.fov);
-    const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
+  return <group ref={groupRef} />;
+}
 
-        const margin = sex === "m" ? 1.28 : 1.18; // M: un poco más de aire para no cortar cabeza
-    const yBias = height * 0.08; // empuja el encuadre hacia arriba => el modelo baja en pantalla
-    const distForHeight = (height / 2) / Math.tan(vFov / 2);
-    const distForWidth = (maxR * 1.35) / Math.tan(hFov / 2); // ancho aproximado
-    const dist = Math.max(distForHeight, distForWidth) * margin;
+function FixedCamera() {
+  const { camera } = useThree();
 
-    // Cámara frontal levemente elevada
-    const target = new THREE.Vector3(0, centerY + yBias, 0);
-    const pos = new THREE.Vector3(0, centerY + yBias + height * 0.04, dist);
-
-    // Evitamos recalcular si no cambió (M/F + resize)
-    const key = `${sex}|${size.width}x${size.height}|${height.toFixed(3)}|${maxR.toFixed(3)}|${centerY.toFixed(3)}|${yBias.toFixed(3)}|${margin.toFixed(3)}`;
-    if (key === lastKey.current) return;
-    lastKey.current = key;
-
-    cam.position.copy(pos);
-    cam.lookAt(target);
-    cam.updateProjectionMatrix();
-  }, [camera, size.width, size.height, subjectRef]);
+  useEffect(() => {
+    // Set once. No resize-based updates.
+    camera.position.copy(CAMERA_POS);
+    camera.fov = CAMERA_FOV;
+    camera.near = 0.1;
+    camera.far = 50;
+    camera.updateProjectionMatrix();
+    camera.lookAt(CAMERA_LOOK_AT);
+    camera.updateMatrixWorld(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return null;
-}
-
-function MannequinModel({ sex, rootRef }: { sex: Sex; rootRef: React.RefObject<THREE.Object3D> }) {
-  const { scene } = useGLTF(MODEL_PATHS[sex]);
-
-  // Clonamos para evitar compartir estado entre renders (importantísimo)
-  const cloned = useMemo(() => scene.clone(true), [scene]);
-
-  useEffect(() => {
-    forceMaterial(cloned);
-  }, [cloned]);
-
-  return <primitive ref={rootRef as any} object={cloned} />;
 }
 
 export function MannequinViewer({
   variant,
   sex,
   showControls = false,
-}: MannequinViewerProps) {
-  const resolvedSex = resolveSex(variant, sex);
-
-  const rootRef = useRef<THREE.Object3D>(null);
+}: {
+  variant?: Variant;
+  sex?: Sex;
+  showControls?: boolean;
+}) {
+  const resolved = resolveSex(variant, sex);
 
   return (
-    <div style={{ width: "100%", height: "100%", position: "relative" }}>
-      <Canvas
-        camera={{ fov: 28, position: [0, 1, 4] }}
-        gl={{ antialias: true, alpha: true }}
-      >
-        <ambientLight intensity={0.85} />
-        <directionalLight position={[3, 6, 4]} intensity={0.75} />
-        <group>
-          <MannequinModel sex={resolvedSex} rootRef={rootRef} />
-        </group>
+    <Canvas
+      dpr={[1, 2]}
+      gl={{ antialias: true, alpha: true, preserveDrawingBuffer: false }}
+      camera={{ fov: CAMERA_FOV, position: [CAMERA_POS.x, CAMERA_POS.y, CAMERA_POS.z] }}
+      style={{ width: "100%", height: "100%" }}
+    >
+      <FixedCamera />
 
-        <AutoFitCamera subjectRef={rootRef} sex={resolvedSex} />
+      {/* Lighting: stable, premium, simple */}
+      <ambientLight intensity={0.85} />
+      <directionalLight position={[2.5, 4.5, 3]} intensity={0.85} />
+      <directionalLight position={[-2.5, 3.5, 2]} intensity={0.35} />
 
-        {showControls ? (
-          <OrbitControls
-            enablePan={false}
-            enableZoom={false}
-            enableRotate={false}
-            target={[0, 1, 0]}
-          />
-        ) : null}
-      </Canvas>
-    </div>
+      <Suspense fallback={null}>
+        <Environment preset="city" />
+        <MannequinModel sex={resolved} />
+      </Suspense>
+
+      {/* Controls intentionally disabled for product stability */}
+      {showControls ? null : null}
+    </Canvas>
   );
 }
 
+export default MannequinViewer;
+
+// Preload both models for snappy M/F toggles
 useGLTF.preload(MODEL_PATHS.m);
 useGLTF.preload(MODEL_PATHS.f);
-
-export default MannequinViewer;
