@@ -35,7 +35,7 @@ const TARGET_HEIGHT: Record<Sex, number> = {
 };
 
 // Drops the mannequin visually so feet sit on the UI "floor" line
-const VISUAL_FLOOR_DROP = 0.40;
+const VISUAL_FLOOR_DROP = 0.28;
 
 
 const MAT = new THREE.MeshStandardMaterial({
@@ -119,7 +119,7 @@ function AutoFitCamera({ subjectRef, sex }: { subjectRef: React.RefObject<THREE.
     const cam = camera as THREE.PerspectiveCamera;
 
     // Nike feel: a bit wider than before (avoid "gigante")
-    cam.fov = 42;
+    cam.fov = 44;
     cam.updateProjectionMatrix();
 
     const vFov = THREE.MathUtils.degToRad(cam.fov);
@@ -129,7 +129,7 @@ function AutoFitCamera({ subjectRef, sex }: { subjectRef: React.RefObject<THREE.
     const margin = sex === "m" ? 1.55 : 1.48;
 
     // Focus a bit ABOVE center => model goes DOWN in frame (torso focus)
-    const yBias = height * 0.70;
+    const yBias = height * 0.98;
 
     // approximate horizontal radius from box
     const maxR = Math.max(sz.x, sz.z) / 2;
@@ -139,10 +139,10 @@ function AutoFitCamera({ subjectRef, sex }: { subjectRef: React.RefObject<THREE.
 
     // Strong zoom-out clamp to prevent legs-only/gigante oscillations
     const dist = Math.max(distForHeight, distForWidth) * margin;
-    const clampedDist = Math.max(dist, 10.4);
+    const clampedDist = Math.max(dist, 11.8);
 
     const target = new THREE.Vector3(0, centerY + yBias, 0);
-    const pos = new THREE.Vector3(0, centerY + yBias + height * 0.18, clampedDist);
+    const pos = new THREE.Vector3(0, centerY + yBias + height * 0.26, clampedDist);
 
     const key = `${sex}|${size.width}x${size.height}|${height.toFixed(3)}|${maxR.toFixed(3)}|${centerY.toFixed(3)}|${yBias.toFixed(3)}|${clampedDist.toFixed(3)}`;
     if (key === lastKey.current) return;
@@ -209,7 +209,7 @@ export function MannequinViewer({ variant, sex: sexProp = "m", showControls = fa
       <Canvas
         key={`${sex}-${observedSize.w}x${observedSize.h}`}
         style={{ width: "100%", height: "100%" }}
-        camera={{ fov: 42, position: [0, 1.9, 9.8] }}
+        camera={{ fov: 44, position: [0, 2.4, 12.0] }}
         gl={{ antialias: true, alpha: true }}
       >
         <ambientLight intensity={0.85} />
