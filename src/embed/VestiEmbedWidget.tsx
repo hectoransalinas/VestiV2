@@ -529,6 +529,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
     <div
       style={{
         width: "100%",
+          display: "block",
         maxWidth: isSizeGuideMode ? "100%" : 420,
         margin: isSizeGuideMode ? 0 : "0 auto",
         borderRadius: isSizeGuideMode ? 0 : 16,
@@ -577,7 +578,8 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
       <div
         style={{
           width: "100%",
-          ...(isSizeGuideMode ? { height: "100%", minHeight: 560 } : { aspectRatio: "9 / 16" }),
+          display: "block",
+          ...(isSizeGuideMode ? { height: 560, minHeight: 560 } : { aspectRatio: "9 / 16" }),
           borderRadius: isSizeGuideMode ? 12 : 16,
           overflow: "hidden",
           background: "#f9fafb",
