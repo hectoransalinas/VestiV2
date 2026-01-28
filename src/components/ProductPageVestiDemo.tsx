@@ -695,296 +695,340 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
           >
             ✕
           </button>
-        </div>
+        </div>{/* Layout 2 columnas (Nike/Adidas)
+    - Izquierda scrollea (acordeón / inputs)
+    - Derecha (viewer) queda fija, NO cambia cuando crece el contenido izquierdo
+*/}
+<div
+  className="vesti-sg-body"
+  style={{
+    display: "grid",
+    gridTemplateColumns: "420px 1fr",
+    gap: 18,
+    alignItems: "stretch",
+    height: "calc(100% - 52px)",
+    overflow: "hidden", // clave: evita que el contenido izquierdo empuje al viewer
+  }}
+>
+  {/* Columna izquierda: recomendación (SCROLL) */}
+  <div
+    className="vesti-sg-left"
+    style={{
+      minWidth: 0,
+      height: "100%",
+      overflowY: "auto",
+      paddingRight: 6, // evita que el scrollbar toque el borde
+    }}
+  >
+    <div style={{ maxWidth: 460, width: "100%" }}>
+      <div
+        style={{
+          border: "1px solid rgba(0,0,0,0.08)",
+          borderRadius: 16,
+          padding: 16,
+          background: "#fafafa",
+        }}
+      >
+        {/* Selector de talle (talle actual) */}
+        {garmentOptions.length > 1 && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+            {garmentOptions.map((g) => {
+              const active = String(g.id) === String(selectedSizeId);
+              return (
+                <button
+                  key={String(g.id)}
+                  type="button"
+                  onClick={() => setSelectedSizeId(String(g.id))}
+                  style={{
+                    minWidth: 38,
+                    padding: "6px 10px",
+                    borderRadius: 999,
+                    border: active ? "2px solid #111827" : "1px solid #d1d5db",
+                    background: active ? "#111827" : "#ffffff",
+                    color: active ? "#ffffff" : "#111827",
+                    fontWeight: 800,
+                    cursor: "pointer",
+                  }}
+                  aria-pressed={active}
+                  title={`Talle ${g.sizeLabel}`}
+                >
+                  {g.sizeLabel}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
-        {/* Layout 2 columnas */}
         <div
           style={{
-            display: "flex",
-            gap: 18,
-            alignItems: "stretch",
-            height: "calc(100% - 52px)",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "6px 10px",
+            borderRadius: 999,
+            background: "#d1fae5",
+            color: "#065f46",
+            fontWeight: 700,
+            fontSize: 13,
           }}
         >
-          {/* Columna izquierda: recomendación */}
-          <div style={{ flex: "0 0 420px", maxWidth: 460, width: "100%" }}>
+          Tu talle ideal
+        </div>
+
+        <div style={{ fontSize: 54, fontWeight: 800, marginTop: 10, color: "#111827" }}>
+          {talleSugerido}
+        </div>
+
+        <div style={{ color: "#374151", marginTop: 6, lineHeight: 1.4 }}>
+          {mensaje}
+        </div>
+
+        <div
+          style={{
+            marginTop: 14,
+            padding: 12,
+            borderRadius: 14,
+            background: "#ffffff",
+            border: "1px solid rgba(0,0,0,0.06)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div
               style={{
-                border: "1px solid rgba(0,0,0,0.08)",
-                borderRadius: 16,
-                padding: 16,
-                background: "#fafafa",
+                width: 28,
+                height: 28,
+                borderRadius: 999,
+                background: "#e5e7eb",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 800,
+                color: "#111827",
               }}
             >
-              {/* Selector de talle (talle actual) */}
-              {garmentOptions.length > 1 && (
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-                  {garmentOptions.map((g) => {
-                    const active = String(g.id) === String(selectedSizeId);
-                    return (
-                      <button
-                        key={String(g.id)}
-                        type="button"
-                        onClick={() => setSelectedSizeId(String(g.id))}
-                        style={{
-                          minWidth: 38,
-                          padding: "6px 10px",
-                          borderRadius: 999,
-                          border: active ? "2px solid #111827" : "1px solid #d1d5db",
-                          background: active ? "#111827" : "#ffffff",
-                          color: active ? "#ffffff" : "#111827",
-                          fontWeight: 800,
-                          cursor: "pointer",
-                        }}
-                        aria-pressed={active}
-                        title={`Talle ${g.sizeLabel}`}
-                      >
-                        {g.sizeLabel}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
-              <div
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  padding: "6px 10px",
-                  borderRadius: 999,
-                  background: "#d1fae5",
-                  color: "#065f46",
-                  fontWeight: 700,
-                  fontSize: 13,
-                }}
-              >
-                Tu talle ideal
+              ✓
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, color: "#111827" }}>
+                Calce estimado
               </div>
-
-              <div style={{ fontSize: 54, fontWeight: 800, marginTop: 10, color: "#111827" }}>
-                {talleSugerido}
-              </div>
-
-              <div style={{ color: "#374151", marginTop: 6, lineHeight: 1.4 }}>
-                {mensaje}
-              </div>
-
-              <div
-                style={{
-                  marginTop: 14,
-                  padding: 12,
-                  borderRadius: 14,
-                  background: "#ffffff",
-                  border: "1px solid rgba(0,0,0,0.06)",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div
-                    style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: 999,
-                      background: "#e5e7eb",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontWeight: 800,
-                      color: "#111827",
-                    }}
-                  >
-                    ✓
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 800, color: "#111827" }}>
-                      Calce estimado
-                    </div>
-                    <div style={{ color: "#6b7280", fontSize: 13 }}>
-                      Basado en tus medidas y este producto
-                    </div>
-                  </div>
-                </div>
-
-                {chips.length > 0 && (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
-                    {chips.map((c, i) => {
-                      const [rawZone, rawStatus] = String(c).split(":");
-                      const zone = String(rawZone || "").trim();
-                      const status = String(rawStatus || "").trim();
-                      const tone = chipTone(status);
-                      return (
-                        <span
-                          key={i}
-                          style={{
-                            fontSize: 12,
-                            padding: "6px 10px",
-                            borderRadius: 999,
-                            background: tone.bg,
-                            border: `1px solid ${tone.border}`,
-                            color: tone.text,
-                            fontWeight: 600,
-                          }}
-                        >
-                          {zone}: {status || c}
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-
-              {/* Acordeón de medidas */}
-              <div style={{ marginTop: 14 }}>
-                <button
-                  type="button"
-                  onClick={() => setOpenMeasures((v) => !v)}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    borderRadius: 12,
-                    border: "1px solid rgba(0,0,0,0.08)",
-                    background: "#ffffff",
-                    padding: "10px 12px",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 10,
-                    fontWeight: 700,
-                    color: "#111827",
-                  }}
-                >
-                  <span>¿Querés ajustar tus datos?</span>
-                  <span style={{ color: "#6b7280", fontWeight: 800 }}>
-                    {openMeasures ? "–" : "+"}
-                  </span>
-                </button>
-
-                {openMeasures && (
-                  <div
-                    style={{
-                      marginTop: 10,
-                      padding: 12,
-                      borderRadius: 12,
-                      border: "1px solid rgba(0,0,0,0.06)",
-                      background: "#ffffff",
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr",
-                      gap: 10,
-                    }}
-                  >
-                    {String(effectiveCategory).toLowerCase() === "upper" && (
-                      <>
-                        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
-                          <span style={{ color: "#6b7280" }}>Hombros (cm)</span>
-                          <input
-                            type="number"
-                            value={perfil.hombros as any}
-                            onChange={(e) => setPerfil((p) => ({ ...p, hombros: Number(e.target.value) } as any))}
-                            style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px" }}
-                          />
-                        </label>
-                        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
-                          <span style={{ color: "#6b7280" }}>Pecho (cm)</span>
-                          <input
-                            type="number"
-                            value={perfil.pecho as any}
-                            onChange={(e) => setPerfil((p) => ({ ...p, pecho: Number(e.target.value) } as any))}
-                            style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px" }}
-                          />
-                        </label>
-                        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
-                          <span style={{ color: "#6b7280" }}>Cintura (cm)</span>
-                          <input
-                            type="number"
-                            value={perfil.cintura as any}
-                            onChange={(e) => setPerfil((p) => ({ ...p, cintura: Number(e.target.value) } as any))}
-                            style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px" }}
-                          />
-                        </label>
-                        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
-                          <span style={{ color: "#6b7280" }}>Largo torso (cm)</span>
-                          <input
-                            type="number"
-                            value={perfil.largoTorso as any}
-                            onChange={(e) => setPerfil((p) => ({ ...p, largoTorso: Number(e.target.value) } as any))}
-                            style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px" }}
-                          />
-                        </label>
-                      </>
-                    )}
-
-                    {String(effectiveCategory).toLowerCase() === "pants" && (
-                      <>
-                        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
-                          <span style={{ color: "#6b7280" }}>Cintura (cm)</span>
-                          <input
-                            type="number"
-                            value={perfil.cintura as any}
-                            onChange={(e) => setPerfil((p) => ({ ...p, cintura: Number(e.target.value) } as any))}
-                            style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px" }}
-                          />
-                        </label>
-                        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
-                          <span style={{ color: "#6b7280" }}>Largo pierna (cm)</span>
-                          <input
-                            type="number"
-                            value={perfil.largoPierna as any}
-                            onChange={(e) => setPerfil((p) => ({ ...p, largoPierna: Number(e.target.value) } as any))}
-                            style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px" }}
-                          />
-                        </label>
-                      </>
-                    )}
-
-                    {String(effectiveCategory).toLowerCase() === "shoes" && (
-                      <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, gridColumn: "1 / -1" }}>
-                        <span style={{ color: "#6b7280" }}>Largo de pie (cm)</span>
-                        <input
-                          type="number"
-                          value={(perfil as any).pieLargo ?? ""}
-                          onChange={(e) => setPerfil((p) => ({ ...p, pieLargo: Number(e.target.value) } as any))}
-                          style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px" }}
-                        />
-                      </label>
-                    )}
-                  </div>
-                )}
+              <div style={{ color: "#6b7280", fontSize: 13 }}>
+                Basado en tus medidas y este producto
               </div>
             </div>
           </div>
 
-          {/* Columna derecha: avatar + overlays */}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            {selectedGarment ? (
-              <VestiProductEmbed
-                garment={selectedGarment}
-                category={effectiveCategory}
-                perfilInicial={perfil}
-                onRecomendacion={handleRecomendacion}
-                style={{ height: "100%" }}
-              />
-            ) : (
-              <div
-                style={{
-                  height: "100%",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderRadius: 16,
-                  background: "rgba(0,0,0,0.04)",
-                  color: "#444",
-                  fontSize: 14,
-                }}
-              >
-                Esperando datos del producto…
-              </div>
-            )}
-          </div>
+          {chips.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+              {chips.map((c, i) => {
+                const [rawZone, rawStatus] = String(c).split(":");
+                const zone = String(rawZone || "").trim();
+                const status = String(rawStatus || "").trim();
+                const tone = chipTone(status);
+                return (
+                  <span
+                    key={i}
+                    style={{
+                      fontSize: 12,
+                      padding: "6px 10px",
+                      borderRadius: 999,
+                      background: tone.bg,
+                      border: `1px solid ${tone.border}`,
+                      color: tone.text,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {zone}: {status || c}
+                  </span>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        {/* Mobile: apilar columnas */}
+        {/* Acordeón de medidas */}
+        <div style={{ marginTop: 14 }}>
+          <button
+            type="button"
+            onClick={() => setOpenMeasures((v) => !v)}
+            style={{
+              width: "100%",
+              textAlign: "left",
+              borderRadius: 12,
+              border: "1px solid rgba(0,0,0,0.08)",
+              background: "#ffffff",
+              padding: "10px 12px",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+              fontWeight: 700,
+              color: "#111827",
+            }}
+          >
+            <span>¿Querés ajustar tus datos?</span>
+            <span style={{ color: "#6b7280", fontWeight: 800 }}>
+              {openMeasures ? "–" : "+"}
+            </span>
+          </button>
+
+          {openMeasures && (
+            <div
+              style={{
+                marginTop: 10,
+                padding: 12,
+                borderRadius: 12,
+                border: "1px solid rgba(0,0,0,0.06)",
+                background: "#ffffff",
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 10,
+              }}
+            >
+              {String(effectiveCategory).toLowerCase() === "upper" && (
+                <>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
+                    <span style={{ color: "#6b7280" }}>Hombros (cm)</span>
+                    <input
+                      type="number"
+                      value={perfil.hombros as any}
+                      onChange={(e) => setPerfil((p) => ({ ...p, hombros: Number(e.target.value) } as any))}
+                      style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px" }}
+                    />
+                  </label>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
+                    <span style={{ color: "#6b7280" }}>Pecho (cm)</span>
+                    <input
+                      type="number"
+                      value={perfil.pecho as any}
+                      onChange={(e) => setPerfil((p) => ({ ...p, pecho: Number(e.target.value) } as any))}
+                      style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px" }}
+                    />
+                  </label>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
+                    <span style={{ color: "#6b7280" }}>Cintura (cm)</span>
+                    <input
+                      type="number"
+                      value={perfil.cintura as any}
+                      onChange={(e) => setPerfil((p) => ({ ...p, cintura: Number(e.target.value) } as any))}
+                      style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px" }}
+                    />
+                  </label>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
+                    <span style={{ color: "#6b7280" }}>Largo torso (cm)</span>
+                    <input
+                      type="number"
+                      value={perfil.largoTorso as any}
+                      onChange={(e) => setPerfil((p) => ({ ...p, largoTorso: Number(e.target.value) } as any))}
+                      style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px" }}
+                    />
+                  </label>
+                </>
+              )}
+
+              {String(effectiveCategory).toLowerCase() === "pants" && (
+                <>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
+                    <span style={{ color: "#6b7280" }}>Cintura (cm)</span>
+                    <input
+                      type="number"
+                      value={perfil.cintura as any}
+                      onChange={(e) => setPerfil((p) => ({ ...p, cintura: Number(e.target.value) } as any))}
+                      style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px" }}
+                    />
+                  </label>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
+                    <span style={{ color: "#6b7280" }}>Largo pierna (cm)</span>
+                    <input
+                      type="number"
+                      value={perfil.largoPierna as any}
+                      onChange={(e) => setPerfil((p) => ({ ...p, largoPierna: Number(e.target.value) } as any))}
+                      style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px" }}
+                    />
+                  </label>
+                </>
+              )}
+
+              {String(effectiveCategory).toLowerCase() === "shoes" && (
+                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, gridColumn: "1 / -1" }}>
+                  <span style={{ color: "#6b7280" }}>Largo de pie (cm)</span>
+                  <input
+                    type="number"
+                    value={(perfil as any).pieLargo ?? ""}
+                    onChange={(e) => setPerfil((p) => ({ ...p, pieLargo: Number(e.target.value) } as any))}
+                    style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px" }}
+                  />
+                </label>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {/* Columna derecha: viewer fijo (NO cambia con el acordeón) */}
+  <div
+    className="vesti-sg-right"
+    style={{
+      minWidth: 0,
+      height: "100%",
+      position: "sticky",
+      top: 0,
+    }}
+  >
+    <div style={{ height: "100%", minHeight: 560 }}>
+      {selectedGarment ? (
+        <VestiProductEmbed
+          garment={selectedGarment}
+          category={effectiveCategory}
+          perfilInicial={perfil}
+          onRecomendacion={handleRecomendacion}
+          style={{ height: "100%" }}
+        />
+      ) : (
+        <div
+          style={{
+            height: "100%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 16,
+            background: "rgba(0,0,0,0.04)",
+            color: "#444",
+            fontSize: 14,
+          }}
+        >
+          Esperando datos del producto…
+        </div>
+      )}
+    </div>
+  </div>
+</div>
+
+{/* Mobile: apilar columnas */}
+<style>{`
+  @media (max-width: 860px) {
+    .vesti-sg-cols { flex-direction: column; height: auto; }
+    .vesti-sg-body {
+      display: flex !important;
+      flex-direction: column !important;
+      height: auto !important;
+      overflow: visible !important;
+    }
+    .vesti-sg-left {
+      height: auto !important;
+      overflow: visible !important;
+      padding-right: 0 !important;
+    }
+    .vesti-sg-right {
+      position: relative !important;
+      top: auto !important;
+      height: 560px !important; /* mantiene viewer usable en mobile */
+    }
+  }
+`}</style>
         <style>{`
           @media (max-width: 860px) {
             .vesti-sg-cols { flex-direction: column; height: auto; }
