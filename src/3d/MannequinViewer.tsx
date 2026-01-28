@@ -183,7 +183,7 @@ function AutoFitCamera({ subjectRef, sex }: { subjectRef: React.RefObject<THREE.
 }
 
 function MannequinModel({ sex, rootRef }: { sex: Sex; rootRef: React.RefObject<THREE.Object3D> }) {
-  const { scene } = useGLTF(MODEL_PATHS[resolvedSex]);
+  const { scene } = useGLTF(MODEL_PATHS[sex]);
 
   // Clonamos para evitar compartir estado entre renders (importantísimo)
   const cloned = useMemo(() => scene.clone(true), [scene]);
