@@ -577,23 +577,20 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
       <div
         style={{
           width: "100%",
-          ...(isSizeGuideMode
-            ? {
-                // En el modal horizontal de Shopify, el aspectRatio hace que el visor crezca demasiado
-                // (alto = ancho * 16/9) y empuja todo hacia abajo. Limitamos el alto del visor
-                // para que termine “antes” (como tu línea amarilla) y no estire el canvas.
-                height: "min(72vh, 640px)",
-                maxHeight: "calc(100vh - 180px)",
-              }
-            : {
-                // En modo demo (card angosta) el aspect ratio funciona bien
-                aspectRatio: "9 / 16",
-              }),
+          // En sizeguide el alto lo define el contenedor del modal (evita contenedor fantasma gigante)
+
+          height: isSizeGuideMode ? "100%" : undefined,
+
+          // En modo demo/app usamos un ratio horizontal (evita panel excesivamente alto)
+
+          aspectRatio: isSizeGuideMode ? undefined : "16 / 9",
           borderRadius: isSizeGuideMode ? 12 : 16,
           overflow: "hidden",
           background: "#f9fafb",
           marginBottom: isSizeGuideMode ? 0 : 8,
           position: "relative",
+          // Clave en layouts flex dentro de modales con overflow
+          minHeight: 0,
         }}
       >
         {/* Toggle M/F mannequin */}
