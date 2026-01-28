@@ -1,18 +1,21 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import React, { useEffect, useMemo, useRef } from "react";
+import { Canvas } from "@react-three/fiber";
 import { OrbitControls, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 
 /**
- * MannequinViewer
- * - Carga GLB interno (male/female)
- * - Fuerza material gris mate "premium"
- * - Normaliza posición: pies al piso (minY = 0)
- * - Auto-encuadra cámara para ver CUERPO COMPLETO sin depender del bounding box del mesh
- *   (usa rango Y de TODOS los huesos / bones)
+ * MannequinViewer (stable / RPM-style)
+ * Objetivo: encuadre estable (sin "saltos") y maniquí bien centrado.
  *
- * NOTA: Esta versión está diseñada para evitar el bug clásico de "solo piernas" o "cuerpo cortado"
- *       cuando los bounds del SkinnedMesh son incorrectos o cambian entre M/F.
+ * Estrategia:
+ * - NO auto-fit de cámara por resize (eso viene generando loops/saltos).
+ * - Normalizamos el modelo a una altura objetivo (targetHeight) y lo centramos en X/Z.
+ * - Piso real: minY -> 0 (pies al piso) usando huesos (robusto en SkinnedMesh).
+ * - Cámara fija estilo AvatarViewer (Ready Player Me), UX estable y predecible.
+ *
+ * Reglas respetadas:
+ * - No toca motor.
+ * - Viewer solo 3D.
  */
 
 type Sex = "m" | "f";
@@ -35,172 +38,150 @@ function forceMaterial(root: THREE.Object3D) {
       (mesh as any).material = MAT;
       mesh.castShadow = false;
       mesh.receiveShadow = false;
+      // Evita que cullee partes finas (puede afectar bounds percibidos)
+      mesh.frustumCulled = false;
     }
   });
 }
 
-function collectBones(root: THREE.Object3D): THREE.Bone[] {
-  const bones: THREE.Bone[] = [];
-  root.traverse((o) => {
-    if ((o as any).isBone) bones.push(o as THREE.Bone);
-  });
-  return bones;
+function percentileSorted(arr: number[], p: number) {
+  // arr debe venir ordenado ascendente
+  if (arr.length === 0) return 0;
+  const idx = Math.min(arr.length - 1, Math.max(0, Math.round((arr.length - 1) * p)));
+  return arr[idx];
 }
 
-function computeBoneBoundsY(root: THREE.Object3D) {
-  const bones = collectBones(root);
+function computeTrimmedBoundsFromBones(root: THREE.Object3D) {
+  const xs: number[] = [];
+  const ys: number[] = [];
+  const zs: number[] = [];
+
   const v = new THREE.Vector3();
-  let minY = Infinity;
-  let maxY = -Infinity;
-  let minX = Infinity;
-  let maxX = -Infinity;
-  let minZ = Infinity;
-  let maxZ = -Infinity;
-  let maxR = 0;
-
-  // Si por alguna razón no hay bones, devolvemos null para fallback
-  if (!bones.length) return null;
-
-  for (const b of bones) {
-    b.getWorldPosition(v);
-    minY = Math.min(minY, v.y);
-    maxY = Math.max(maxY, v.y);
-
-    // radio horizontal aproximado usando bones (mejor que nada, súper estable entre M/F)
-    const r = Math.hypot(v.x, v.z);
-    maxR = Math.max(maxR, r);
-  }
-
-  const centerX = (minX + maxX) / 2;
-  const centerZ = (minZ + maxZ) / 2;
-  return { minY, maxY, maxR, centerX, centerZ };
-}
-
-function computeBoneBounds(root: THREE.Object3D) {
-  const v = new THREE.Vector3();
-  let minY = Infinity;
-  let maxY = -Infinity;
-  let minX = Infinity;
-  let maxX = -Infinity;
-  let minZ = Infinity;
-  let maxZ = -Infinity;
-  let maxR = 0;
-
   root.traverse((o) => {
-    // Usamos bones y joints (Object3D con nombre), pero evitamos meshes (que pueden tener bounds rotos)
-    const isBone = (o as any).isBone || (o.type === "Bone");
-    if (!isBone) return;
-    o.getWorldPosition(v);
-    if (!isFinite(v.y)) return;
-    if (v.y < minY) minY = v.y;
-    if (v.y > maxY) maxY = v.y;
-    if (v.x < minX) minX = v.x;
-    if (v.x > maxX) maxX = v.x;
-    if (v.z < minZ) minZ = v.z;
-    if (v.z > maxZ) maxZ = v.z;
-    const r = Math.hypot(v.x, v.z);
-    if (r > maxR) maxR = r;
+    if ((o as any).isBone) {
+      (o as THREE.Object3D).getWorldPosition(v);
+      if (Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z)) {
+        xs.push(v.x);
+        ys.push(v.y);
+        zs.push(v.z);
+      }
+    }
   });
 
-  // Fallback: si por algún motivo no hubo bones, caemos a Box3 del objeto
-  if (!isFinite(minY) || !isFinite(maxY) || maxY - minY < 0.01) {
-    const box = new THREE.Box3().setFromObject(root);
-    minY = box.min.y;
-    maxY = box.max.y;
-    minX = box.min.x;
-    maxX = box.max.x;
-    minZ = box.min.z;
-    maxZ = box.max.z;
-    maxR = Math.max(Math.abs(box.min.x), Math.abs(box.max.x), Math.abs(box.min.z), Math.abs(box.max.z));
-  }
+  if (ys.length < 8) return null; // muy pocos bones => fallback
 
-  const centerX = (minX + maxX) / 2;
-  const centerZ = (minZ + maxZ) / 2;
-  return { minY, maxY, maxR, centerX, centerZ };
+  xs.sort((a, b) => a - b);
+  ys.sort((a, b) => a - b);
+  zs.sort((a, b) => a - b);
+
+  // recortamos outliers (IK/targets/manos exageradas)
+  const lo = 0.06;
+  const hi = 0.94;
+
+  const minX = percentileSorted(xs, lo);
+  const maxX = percentileSorted(xs, hi);
+  const minY = percentileSorted(ys, lo);
+  const maxY = percentileSorted(ys, hi);
+  const minZ = percentileSorted(zs, lo);
+  const maxZ = percentileSorted(zs, hi);
+
+  const height = Math.max(0.5, maxY - minY);
+  const width = Math.max(0.2, maxX - minX);
+  const depth = Math.max(0.2, maxZ - minZ);
+
+  return { minX, maxX, minY, maxY, minZ, maxZ, height, width, depth };
 }
 
-function AutoFitCamera({ subjectRef, sex }: { subjectRef: React.RefObject<THREE.Object3D>; sex: Sex }) {
-  const { camera, size } = useThree();
-  const baseYRef = useRef<number | null>(null);
-  const lastKey = useRef<string>("");
+function computeBoundsFromMeshes(root: THREE.Object3D) {
+  // Fallback: Box3 pero SOLO considerando meshes (evita helpers gigantes)
+  const box = new THREE.Box3();
+  const tempBox = new THREE.Box3();
+  let has = false;
 
-  useEffect(() => {
-    if (!(camera as any).isPerspectiveCamera) return;
-    const cam = camera as THREE.PerspectiveCamera;
-    cam.near = 0.05;
-    cam.far = 200;
-    cam.updateProjectionMatrix();
-  }, [camera]);
+  root.updateMatrixWorld(true);
+  root.traverse((o) => {
+    const mesh = o as any;
+    if (mesh && mesh.isMesh) {
+      // Preferimos boundingBox de geometría si existe
+      const geo = mesh.geometry as THREE.BufferGeometry | undefined;
+      if (geo) {
+        if (!geo.boundingBox) geo.computeBoundingBox();
+        if (geo.boundingBox) {
+          tempBox.copy(geo.boundingBox);
+          tempBox.applyMatrix4(mesh.matrixWorld);
+          box.union(tempBox);
+          has = true;
+          return;
+        }
+      }
+      // Último recurso
+      tempBox.setFromObject(mesh);
+      box.union(tempBox);
+      has = true;
+    }
+  });
 
-  useEffect(() => {
-    const subject = subjectRef.current;
-    if (!subject) return;
-    if (!(camera as any).isPerspectiveCamera) return;
-    const cam = camera as THREE.PerspectiveCamera;
+  if (!has) return null;
 
-    subject.updateMatrixWorld(true);
-
-    // 1) Bounds por BONES: en skinned meshes evita el bug de Box3 = "solo pies"
-    const b0 = computeBoneBounds(subject);
-    const height0 = Math.max(0.5, b0.maxY - b0.minY);
-
-    // 2) Pies al piso (set absoluto, sin acumular)
-    if (baseYRef.current === null) baseYRef.current = subject.position.y;
-    const baseY = baseYRef.current;
-    const deltaY = 0 - b0.minY;
-    subject.position.y = baseY + deltaY;
-    subject.updateMatrixWorld(true);
-
-    // 3) Recalcular bounds luego de ajustar piso
-    const b1 = computeBoneBounds(subject);
-    const height = Math.max(0.5, b1.maxY - b1.minY);
-
-    // 4) Auto-encuadre cámara con ancho CLAMPED (para que manos/IK no alejen la cámara)
-    const aspect = size.width / Math.max(1, size.height);
-    const vFov = THREE.MathUtils.degToRad(cam.fov);
-    const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
-
-    // Clamp del radio horizontal en función del alto: evita "modelo mini"
-    const maxR = THREE.MathUtils.clamp(b1.maxR, height * 0.10, height * 0.28);
-
-    const halfH = height / 2;
-    const halfW = maxR; // radio ≈ half width
-
-    const margin = 1.08; // aire leve y estable
-
-    const distForHeight = halfH / Math.tan(vFov / 2);
-    const distForWidth = halfW / Math.tan(hFov / 2);
-    const dist = Math.max(distForHeight, distForWidth) * margin;
-
-    // 5) Target en el centro del cuerpo (bias chico para que entre cabeza)
-    const yBias = height * 0.04;
-    const target = new THREE.Vector3(b1.centerX, b1.minY + halfH + yBias, b1.centerZ);
-
-    // Cámara frontal, leve elevación
-    const pos = new THREE.Vector3(target.x, target.y + height * 0.02, dist);
-
-    const key = `${sex}|${size.width}x${size.height}|h${height.toFixed(3)}|r${maxR.toFixed(3)}|t${target.y.toFixed(3)}|d${dist.toFixed(3)}`;
-    if (key === lastKey.current) return;
-    lastKey.current = key;
-
-    cam.position.copy(pos);
-    cam.lookAt(target);
-    cam.updateProjectionMatrix();
-  }, [camera, size.width, size.height, sex, subjectRef]);
-
-  return null;
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  return {
+    minX: box.min.x,
+    maxX: box.max.x,
+    minY: box.min.y,
+    maxY: box.max.y,
+    minZ: box.min.z,
+    maxZ: box.max.z,
+    height: Math.max(0.5, size.y),
+    width: Math.max(0.2, size.x),
+    depth: Math.max(0.2, size.z),
+  };
 }
 
+function normalizeMannequin(root: THREE.Object3D, sex: Sex) {
+  // 1) bounds robustos
+  const b = computeTrimmedBoundsFromBones(root) ?? computeBoundsFromMeshes(root);
+  if (!b) return;
 
-function MannequinModel({ sex, rootRef }: { sex: Sex; rootRef: React.RefObject<THREE.Object3D> }) {
+  // 2) escala a altura objetivo (misma para M/F => consistencia)
+  const targetHeight = 1.7; // "altura humana" de referencia (no identitaria)
+  const scale = targetHeight / b.height;
+
+  // 3) centro X/Z + pies al piso (minY -> 0), en espacio mundo
+  const centerX = (b.minX + b.maxX) / 2;
+  const centerZ = (b.minZ + b.maxZ) / 2;
+  const feetY = b.minY;
+
+  // Reseteo para evitar acumulación
+  root.position.set(0, 0, 0);
+  root.rotation.set(0, 0, 0);
+  root.scale.setScalar(1);
+
+  // Aplicamos escala y centrado (convertimos world bounds -> local mediante escala)
+  root.scale.setScalar(scale);
+  root.position.x = -centerX * scale;
+  root.position.z = -centerZ * scale;
+  root.position.y = -feetY * scale;
+
+  // 4) Micro ajuste vertical (igual que el AvatarViewer) para quedar más "al centro" del frame
+  // (sin offsets mágicos globales: es un bias de encuadre, no de producto)
+  const bias = sex === "m" ? 0.10 : 0.10; // bajar un poco el cuerpo (sube la cámara relativa)
+  root.position.y -= bias;
+
+  root.updateMatrixWorld(true);
+}
+
+function MannequinModel({ sex, rootRef }: { sex: Sex; rootRef: React.RefObject<THREE.Group> }) {
   const { scene } = useGLTF(MODEL_PATHS[sex]);
 
-  // Clonamos para evitar compartir estado entre renders (importantísimo)
-  const cloned = useMemo(() => scene.clone(true), [scene]);
+  const cloned = useMemo(() => scene.clone(true) as THREE.Group, [scene]);
 
   useEffect(() => {
     forceMaterial(cloned);
-  }, [cloned]);
+    // Importante: normalizar después de forzar material y con matrices listas
+    cloned.updateMatrixWorld(true);
+    normalizeMannequin(cloned, sex);
+  }, [cloned, sex]);
 
   return <primitive ref={rootRef as any} object={cloned} />;
 }
@@ -208,75 +189,37 @@ function MannequinModel({ sex, rootRef }: { sex: Sex; rootRef: React.RefObject<T
 export type MannequinVariant = "M" | "F" | Sex | "male" | "female";
 
 export interface MannequinViewerProps {
-  /** Prefer `variant` ("M"/"F") from the UI. `sex` kept for backwards compat. */
   variant?: MannequinVariant;
   sex?: Sex;
   showControls?: boolean;
 }
 
-export function MannequinViewer({
-  variant,
-  sex: sexProp = "m",
-  showControls = false,
-}: MannequinViewerProps) {
-    const sex: Sex = (() => {
-    // Aceptamos múltiples valores por robustez (evita crash si entra "male"/"female")
+export function MannequinViewer({ variant, sex: sexProp = "m", showControls = false }: MannequinViewerProps) {
+  const sex: Sex = (() => {
     if (variant === "F" || variant === "f" || (variant as any) === "female") return "f";
     if (variant === "M" || variant === "m" || (variant as any) === "male") return "m";
     return sexProp;
   })();
 
-const rootRef = useRef<THREE.Object3D>(null);
-
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const [observedSize, setObservedSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
-
-  useEffect(() => {
-    const el = wrapRef.current;
-    if (!el) return;
-
-    let raf = 0;
-    const ro = new ResizeObserver((entries) => {
-      const cr = entries[0]?.contentRect;
-      if (!cr) return;
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        const w = Math.round(cr.width);
-        const h = Math.round(cr.height);
-        setObservedSize((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
-      });
-    });
-
-    ro.observe(el);
-    return () => {
-      cancelAnimationFrame(raf);
-      ro.disconnect();
-    };
-  }, []);
+  const rootRef = useRef<THREE.Group>(null);
 
   return (
-    <div ref={wrapRef} style={{ width: "100%", height: "100%", position: "relative" }}>
+    <div style={{ width: "100%", height: "100%", position: "relative" }}>
       <Canvas
-        key={`${sex}-${observedSize.w}x${observedSize.h}`}
+        // Cámara fija (estable) tipo RPM/AvatarViewer
+        camera={{ position: [0, 1.35, 3.15], fov: 38, near: 0.05, far: 200 }}
         style={{ width: "100%", height: "100%" }}
-        camera={{ fov: 28, position: [0, 1, 4] }}
         gl={{ antialias: true, alpha: true }}
       >
         <ambientLight intensity={0.85} />
         <directionalLight position={[3, 6, 4]} intensity={0.75} />
+
         <group>
           <MannequinModel sex={sex} rootRef={rootRef} />
         </group>
 
-        <AutoFitCamera subjectRef={rootRef} sex={sex} />
-
         {showControls ? (
-          <OrbitControls
-            enablePan={false}
-            enableZoom={false}
-            enableRotate={false}
-            target={[0, 1, 0]}
-          />
+          <OrbitControls enablePan={false} enableZoom={false} enableRotate={false} />
         ) : null}
       </Canvas>
     </div>
