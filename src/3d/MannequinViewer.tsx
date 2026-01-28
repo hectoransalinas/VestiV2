@@ -1,18 +1,17 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useRef } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
-import { OrbitControls, useGLTF } from "@react-three/drei";
+import { Html, OrbitControls, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 
 /**
- * MannequinViewer
+ * MannequinViewer (estable, estilo "RPM-like")
  * - Carga GLB interno (male/female)
  * - Fuerza material gris mate "premium"
- * - Normaliza posición: pies al piso (minY = 0)
- * - Auto-encuadra cámara para ver CUERPO COMPLETO sin depender del bounding box del mesh
- *   (usa rango Y de TODOS los huesos / bones)
- *
- * NOTA: Esta versión está diseñada para evitar el bug clásico de "solo piernas" o "cuerpo cortado"
- *       cuando los bounds del SkinnedMesh son incorrectos o cambian entre M/F.
+ * - Centrado robusto tipo AvatarViewer:
+ *    1) Box3 del objeto (mesh) -> escala a altura objetivo
+ *    2) Centrar en origen (X/Z)
+ *    3) Pies al piso (minY = 0)
+ * - Cámara fija + lookAt fijo (sin autosaltos por bounds raros / bones)
  */
 
 type Sex = "m" | "f";
@@ -22,6 +21,7 @@ const MODEL_PATHS: Record<Sex, string> = {
   f: "/models/mannequin_f.glb",
 };
 
+// Material "premium" gris mate
 const MAT = new THREE.MeshStandardMaterial({
   color: new THREE.Color("#8b8f97"),
   roughness: 0.85,
@@ -35,107 +35,84 @@ function forceMaterial(root: THREE.Object3D) {
       (mesh as any).material = MAT;
       mesh.castShadow = false;
       mesh.receiveShadow = false;
+      // Evita cortes raros en algunos skinned meshes
+      (mesh as any).frustumCulled = false;
     }
   });
 }
 
-function AutoFitCamera({ subjectRef, sex }: { subjectRef: React.RefObject<THREE.Object3D>; sex: Sex }) {
-  const { camera, size } = useThree();
-  const baseYRef = useRef<number | null>(null);
-  const lastKey = useRef<string>("");
+function safeBox3(obj: THREE.Object3D): { box: THREE.Box3; size: THREE.Vector3; center: THREE.Vector3 } | null {
+  obj.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(obj);
+  const size = new THREE.Vector3();
+  const center = new THREE.Vector3();
+  box.getSize(size);
+  box.getCenter(center);
 
-  useEffect(() => {
-    if (!(camera as any).isPerspectiveCamera) return;
-    const cam = camera as THREE.PerspectiveCamera;
-    cam.near = 0.05;
-    cam.far = 200;
-    cam.updateProjectionMatrix();
-  }, [camera]);
-
-  useEffect(() => {
-    const subject = subjectRef.current;
-    if (!subject) return;
-    if (!(camera as any).isPerspectiveCamera) return;
-    const cam = camera as THREE.PerspectiveCamera;
-
-    // Aseguramos matrices al día
-    subject.updateMatrixWorld(true);
-
-    // 1) Bounds reales del OBJETO (mesh), no bones: más predecible para maniquíes
-    const box = new THREE.Box3().setFromObject(subject);
-    const sizeV = new THREE.Vector3();
-    const center = new THREE.Vector3();
-    box.getSize(sizeV);
-    box.getCenter(center);
-
-    if (!isFinite(sizeV.y) || sizeV.y < 0.001) return;
-
-    // 2) Pies al piso, estable (sin acumulación):
-    // Guardamos el "baseY" la primera vez y luego seteamos absoluto.
-    if (baseYRef.current === null) baseYRef.current = subject.position.y;
-    const baseY = baseYRef.current;
-
-    const desiredFeetY = 0; // piso
-    const delta = desiredFeetY - box.min.y; // cuánto hay que subir/bajar para que minY sea 0
-    subject.position.y = baseY + delta;
-    subject.updateMatrixWorld(true);
-
-    // 3) Recalcular bounds luego del ajuste de piso
-    const box2 = new THREE.Box3().setFromObject(subject);
-    const size2 = new THREE.Vector3();
-    const center2 = new THREE.Vector3();
-    box2.getSize(size2);
-    box2.getCenter(center2);
-
-    // Protecciones
-    const height = Math.max(0.5, size2.y);
-    const halfH = height / 2;
-
-    // 4) Auto-encuadre por alto y ancho (sin magia global)
-    const aspect = size.width / Math.max(1, size.height);
-    const vFov = THREE.MathUtils.degToRad(cam.fov);
-    const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
-
-    const halfW = Math.max(size2.x, size2.z) / 2;
-
-    // Margen leve (premium, sin aire excesivo)
-    const margin = sex === "m" ? 1.06 : 1.06;
-
-    const distForHeight = halfH / Math.tan(vFov / 2);
-    const distForWidth = halfW / Math.tan(hFov / 2);
-    const dist = Math.max(distForHeight, distForWidth) * margin;
-
-    // 5) Target: centro real del maniquí (ligero bias para que cabeza no se corte)
-    const yBias = height * 0.03;
-    const target = new THREE.Vector3(center2.x, center2.y + yBias, center2.z);
-
-    // Cámara frontal, mínima elevación
-    const pos = new THREE.Vector3(target.x, target.y + height * 0.01, dist);
-
-    const key = `${sex}|${size.width}x${size.height}|${height.toFixed(3)}|${halfW.toFixed(3)}|${target.y.toFixed(3)}|${dist.toFixed(3)}`;
-    if (key === lastKey.current) return;
-    lastKey.current = key;
-
-    cam.position.copy(pos);
-    cam.lookAt(target);
-    cam.updateProjectionMatrix();
-  }, [camera, size.width, size.height, sex, subjectRef]);
-
-  return null;
+  if (!Number.isFinite(size.y) || size.y < 0.001) return null;
+  return { box, size, center };
 }
 
-function MannequinModel({ sex, rootRef }: { sex: Sex; rootRef: React.RefObject<THREE.Object3D> }) {
-  const { scene } = useGLTF(MODEL_PATHS[sex]);
+function normalizeMannequin(root: THREE.Object3D, targetHeight = 1.7) {
+  // 1) Escala por altura
+  const b1 = safeBox3(root);
+  if (!b1) return;
 
-  // Clonamos para evitar compartir estado entre renders (importantísimo)
+  const currentHeight = b1.size.y || 1;
+  const scale = targetHeight / currentHeight;
+  root.scale.setScalar(scale);
+
+  // 2) Centrar en origen (luego de escala)
+  const b2 = safeBox3(root);
+  if (!b2) return;
+  root.position.sub(b2.center);
+
+  // 3) Pies al piso (minY = 0)
+  const b3 = safeBox3(root);
+  if (!b3) return;
+  root.position.y -= b3.box.min.y;
+
+  // 4) Micro ajuste (baja apenas, como en AvatarViewer)
+  root.position.y -= 0.05;
+}
+
+const MannequinInner: React.FC<{ sex: Sex }> = ({ sex }) => {
+  const group = useRef<THREE.Group>(null!);
+  const { scene } = useGLTF(MODEL_PATHS[sex]) as any;
+
+  // Clonar para no compartir estado entre renders M/F
   const cloned = useMemo(() => scene.clone(true), [scene]);
 
   useEffect(() => {
-    forceMaterial(cloned);
-  }, [cloned]);
+    if (!group.current) return;
 
-  return <primitive ref={rootRef as any} object={cloned} />;
-}
+    // Limpiar children previos
+    while (group.current.children.length) group.current.remove(group.current.children[0]);
+
+    // Reset transforms por seguridad
+    group.current.position.set(0, 0, 0);
+    group.current.rotation.set(0, 0, 0);
+    group.current.scale.set(1, 1, 1);
+
+    forceMaterial(cloned);
+    group.current.add(cloned);
+
+    normalizeMannequin(group.current, 1.7);
+  }, [cloned, sex]);
+
+  return <group ref={group} />;
+};
+
+const FixedLookAt: React.FC<{ target: [number, number, number] }> = ({ target }) => {
+  const { camera } = useThree();
+
+  useEffect(() => {
+    camera.lookAt(target[0], target[1], target[2]);
+    camera.updateProjectionMatrix();
+  }, [camera, target]);
+
+  return null;
+};
 
 export type MannequinVariant = "M" | "F" | Sex | "male" | "female";
 
@@ -151,67 +128,53 @@ export function MannequinViewer({
   sex: sexProp = "m",
   showControls = false,
 }: MannequinViewerProps) {
-    const sex: Sex = (() => {
-    // Aceptamos múltiples valores por robustez (evita crash si entra "male"/"female")
+  const sex: Sex = (() => {
     if (variant === "F" || variant === "f" || (variant as any) === "female") return "f";
     if (variant === "M" || variant === "m" || (variant as any) === "male") return "m";
     return sexProp;
   })();
 
-const rootRef = useRef<THREE.Object3D>(null);
-
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const [observedSize, setObservedSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
-
-  useEffect(() => {
-    const el = wrapRef.current;
-    if (!el) return;
-
-    let raf = 0;
-    const ro = new ResizeObserver((entries) => {
-      const cr = entries[0]?.contentRect;
-      if (!cr) return;
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        const w = Math.round(cr.width);
-        const h = Math.round(cr.height);
-        setObservedSize((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
-      });
-    });
-
-    ro.observe(el);
-    return () => {
-      cancelAnimationFrame(raf);
-      ro.disconnect();
-    };
-  }, []);
+  // Cámara fija (RPM-like) basada en altura objetivo
+  const targetHeight = 1.7;
+  const camPos: [number, number, number] = [0, targetHeight * 0.95, targetHeight * 1.35]; // ~[0,1.6,2.3]
+  const lookAt: [number, number, number] = [0, targetHeight * 0.55, 0]; // ~[0,0.94,0]
 
   return (
-    <div ref={wrapRef} style={{ width: "100%", height: "100%", position: "relative" }}>
-      <Canvas
-        key={`${sex}-${observedSize.w}x${observedSize.h}`}
-        style={{ width: "100%", height: "100%" }}
-        camera={{ fov: 34, position: [0, 1, 4] }}
-        gl={{ antialias: true, alpha: true }}
+    <Canvas
+      camera={{ position: camPos, fov: 38, near: 0.05, far: 50 }}
+      style={{ width: "100%", height: "100%" }}
+      gl={{ antialias: true, alpha: true }}
+    >
+      <color attach="background" args={["#f9fafb"]} />
+
+      {/* Luz suave premium */}
+      <hemisphereLight intensity={0.75} groundColor={"#d1d5db"} />
+      <directionalLight intensity={0.9} position={[2.5, 4.5, 3.2]} />
+      <directionalLight intensity={0.35} position={[-3, 2, -2]} />
+
+      <Suspense
+        fallback={
+          <Html center style={{ fontSize: 12, color: "#6b7280" }}>
+            Cargando maniquí 3D...
+          </Html>
+        }
       >
-        <ambientLight intensity={0.85} />
-        <directionalLight position={[3, 6, 4]} intensity={0.75} />
-        <group>
-          <MannequinModel sex={sex} rootRef={rootRef} />
-        </group>
+        <MannequinInner sex={sex} />
+      </Suspense>
 
-        <AutoFitCamera subjectRef={rootRef} sex={sex} />
+      <FixedLookAt target={lookAt} />
 
-        {showControls ? (
-          <OrbitControls
-            enablePan={false}
-            enableZoom={false}
-            enableRotate={false}
-            target={[0, 1, 0]}
-          />
-        ) : null}
-      </Canvas>
-    </div>
+      {showControls ? (
+        <OrbitControls
+          enablePan={false}
+          minDistance={1.6}
+          maxDistance={3.5}
+          minPolarAngle={Math.PI / 3}
+          maxPolarAngle={Math.PI / 2}
+          target={lookAt}
+        />
+      ) : null}
+    </Canvas>
   );
 }
 
