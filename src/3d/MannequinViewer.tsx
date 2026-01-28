@@ -129,7 +129,10 @@ function AutoFitCamera({ subjectRef, sex }: { subjectRef: React.RefObject<THREE.
     const margin = sex === "m" ? 1.55 : 1.48;
 
     // Focus a bit ABOVE center => model goes DOWN in frame (torso focus)
-    const yBias = height * 0.98;
+    const yBias = height * 1.05; // base torso focus
+
+    // Extra push DOWN in the canvas so feet land near the bottom guideline
+    const frameDown = height * 0.55;
 
     // approximate horizontal radius from box
     const maxR = Math.max(sz.x, sz.z) / 2;
@@ -141,8 +144,8 @@ function AutoFitCamera({ subjectRef, sex }: { subjectRef: React.RefObject<THREE.
     const dist = Math.max(distForHeight, distForWidth) * margin;
     const clampedDist = Math.max(dist, 11.8);
 
-    const target = new THREE.Vector3(0, centerY + yBias, 0);
-    const pos = new THREE.Vector3(0, centerY + yBias + height * 0.26, clampedDist);
+    const target = new THREE.Vector3(0, centerY + yBias + frameDown, 0);
+    const pos = new THREE.Vector3(0, centerY + yBias + frameDown + height * 0.26, clampedDist);
 
     const key = `${sex}|${size.width}x${size.height}|${height.toFixed(3)}|${maxR.toFixed(3)}|${centerY.toFixed(3)}|${yBias.toFixed(3)}|${clampedDist.toFixed(3)}`;
     if (key === lastKey.current) return;
