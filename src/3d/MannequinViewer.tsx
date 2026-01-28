@@ -113,17 +113,17 @@ function AutoFitCamera({ subjectRef, sex }: { subjectRef: React.RefObject<THREE.
     const cam = camera as THREE.PerspectiveCamera;
 
     // Nike feel: a bit wider than before (avoid "gigante")
-    cam.fov = 32;
+    cam.fov = 40;
     cam.updateProjectionMatrix();
 
     const vFov = THREE.MathUtils.degToRad(cam.fov);
     const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
 
     // Give more breathing room + clamp distance so it never goes too close
-    const margin = sex === "m" ? 1.35 : 1.28;
+    const margin = sex === "m" ? 1.55 : 1.48;
 
     // Focus a bit ABOVE center => model goes DOWN in frame (torso focus)
-    const yBias = height * 0.22;
+    const yBias = height * 0.45;
 
     // approximate horizontal radius from box
     const maxR = Math.max(sz.x, sz.z) / 2;
@@ -133,10 +133,10 @@ function AutoFitCamera({ subjectRef, sex }: { subjectRef: React.RefObject<THREE.
 
     // Strong zoom-out clamp to prevent legs-only/gigante oscillations
     const dist = Math.max(distForHeight, distForWidth) * margin;
-    const clampedDist = Math.max(dist, 4.8);
+    const clampedDist = Math.max(dist, 7.8);
 
     const target = new THREE.Vector3(0, centerY + yBias, 0);
-    const pos = new THREE.Vector3(0, centerY + yBias + height * 0.06, clampedDist);
+    const pos = new THREE.Vector3(0, centerY + yBias + height * 0.12, clampedDist);
 
     const key = `${sex}|${size.width}x${size.height}|${height.toFixed(3)}|${maxR.toFixed(3)}|${centerY.toFixed(3)}|${yBias.toFixed(3)}|${clampedDist.toFixed(3)}`;
     if (key === lastKey.current) return;
@@ -203,7 +203,7 @@ export function MannequinViewer({ variant, sex: sexProp = "m", showControls = fa
       <Canvas
         key={`${sex}-${observedSize.w}x${observedSize.h}`}
         style={{ width: "100%", height: "100%" }}
-        camera={{ fov: 32, position: [0, 1.2, 5.2] }}
+        camera={{ fov: 40, position: [0, 1.6, 8.0] }}
         gl={{ antialias: true, alpha: true }}
       >
         <ambientLight intensity={0.85} />
