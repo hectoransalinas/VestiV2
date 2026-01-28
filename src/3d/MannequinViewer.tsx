@@ -82,19 +82,28 @@ function AutoFitCamera({ subjectRef, sex }: { subjectRef: React.RefObject<THREE.
     camera.updateProjectionMatrix();
   }, [camera]);
 
+  const baseYRef = useRef<number | null>(null);
+  const lastSubjectIdRef = useRef<string>("");
+
   useEffect(() => {
     const subject = subjectRef.current;
     if (!subject) return;
 
+    // Guardamos el Y "base" del root (evita acumulación por `+=` en remount/resize)
+    if (lastSubjectIdRef.current !== subject.uuid) {
+      lastSubjectIdRef.current = subject.uuid;
+      baseYRef.current = subject.position.y;
+    }
+
     // Normalizamos pies al piso ANTES de encuadrar
     const bounds = computeBoneBoundsY(subject);
     if (bounds) {
-      // llevamos minY a 0 ajustando el root
-      // OJO: estamos modificando subject.position.y
-      subject.position.y += -bounds.minY;
+      const baseY = baseYRef.current ?? subject.position.y;
+      // llevamos minY a 0 ajustando el root de forma absoluta (estable)
+      subject.position.y = baseY - bounds.minY;
       subject.updateMatrixWorld(true);
     }
-  }, [subjectRef]);
+  }, [sex]);
 
   useEffect(() => {
     const subject = subjectRef.current;
@@ -137,11 +146,14 @@ function AutoFitCamera({ subjectRef, sex }: { subjectRef: React.RefObject<THREE.
     const aspect = size.width / Math.max(1, size.height);
     const vFov = THREE.MathUtils.degToRad(cam.fov);
     const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
+    // Clamp del radio horizontal: los bones de manos/IK pueden inflar maxR y alejar la cámara (modelo "chico").
+    const maxRClamped = THREE.MathUtils.clamp(maxR, 0.18, height * 0.28);
 
-        const margin = sex === "m" ? 1.28 : 1.18; // M: un poco más de aire para no cortar cabeza
-    const yBias = height * 0.08; // empuja el encuadre hacia arriba => el modelo baja en pantalla
+    // Menos "tele" + menos aire => maniquí más grande y consistente entre M/F
+    const margin = sex === "m" ? 1.10 : 1.06;
+    const yBias = height * 0.05; // leve sesgo para que no se corte la cabeza sin subirlo de más
     const distForHeight = (height / 2) / Math.tan(vFov / 2);
-    const distForWidth = (maxR * 1.35) / Math.tan(hFov / 2); // ancho aproximado
+    const distForWidth = (maxRClamped * 1.10) / Math.tan(hFov / 2); // ancho aproximado (con clamp)
     const dist = Math.max(distForHeight, distForWidth) * margin;
 
     // Cámara frontal levemente elevada
@@ -149,7 +161,7 @@ function AutoFitCamera({ subjectRef, sex }: { subjectRef: React.RefObject<THREE.
     const pos = new THREE.Vector3(0, centerY + yBias + height * 0.04, dist);
 
     // Evitamos recalcular si no cambió (M/F + resize)
-    const key = `${sex}|${size.width}x${size.height}|${height.toFixed(3)}|${maxR.toFixed(3)}|${centerY.toFixed(3)}|${yBias.toFixed(3)}|${margin.toFixed(3)}`;
+    const key = `${sex}|${size.width}x${size.height}|${height.toFixed(3)}|${maxRClamped.toFixed(3)}|${centerY.toFixed(3)}|${yBias.toFixed(3)}|${margin.toFixed(3)}`;
     if (key === lastKey.current) return;
     lastKey.current = key;
 
@@ -228,7 +240,7 @@ const rootRef = useRef<THREE.Object3D>(null);
       <Canvas
         key={`${sex}-${observedSize.w}x${observedSize.h}`}
         style={{ width: "100%", height: "100%" }}
-        camera={{ fov: 28, position: [0, 1, 4] }}
+        camera={{ fov: 34, position: [0, 1.05, 3.6] }}
         gl={{ antialias: true, alpha: true }}
       >
         <ambientLight intensity={0.85} />
