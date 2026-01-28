@@ -174,26 +174,41 @@ function MannequinModel({ sex, rootRef }: { sex: Sex; rootRef: React.RefObject<T
   return <primitive ref={rootRef as any} object={cloned} />;
 }
 
-export default function MannequinViewer({
-  sex = "m",
-  showControls = false,
-}: {
+export type MannequinVariant = "M" | "F" | Sex;
+
+export interface MannequinViewerProps {
+  /** Prefer `variant` ("M"/"F") from the UI. `sex` kept for backwards compat. */
+  variant?: MannequinVariant;
   sex?: Sex;
   showControls?: boolean;
-}) {
-  const rootRef = useRef<THREE.Object3D>(null);
+}
+
+export function MannequinViewer({
+  variant,
+  sex: sexProp = "m",
+  showControls = false,
+}: MannequinViewerProps) {
+    const sex: Sex = variant === "F" ? "f" : variant === "M" ? "m" : (variant ?? sexProp);
+
+const rootRef = useRef<THREE.Object3D>(null);
 
   const wrapRef = useRef<HTMLDivElement>(null);
-  const [resizeTick, setResizeTick] = useState(0);
+  const [observedSize, setObservedSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
 
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
 
     let raf = 0;
-    const ro = new ResizeObserver(() => {
+    const ro = new ResizeObserver((entries) => {
+      const cr = entries[0]?.contentRect;
+      if (!cr) return;
       cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => setResizeTick((t) => t + 1));
+      raf = requestAnimationFrame(() => {
+        const w = Math.round(cr.width);
+        const h = Math.round(cr.height);
+        setObservedSize((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
+      });
     });
 
     ro.observe(el);
@@ -204,8 +219,10 @@ export default function MannequinViewer({
   }, []);
 
   return (
-    <div style={{ width: "100%", height: "100%", position: "relative" }}>
+    <div ref={wrapRef} style={{ width: "100%", height: "100%", position: "relative" }}>
       <Canvas
+        key={`${sex}-${observedSize.w}x${observedSize.h}`}
+        style={{ width: "100%", height: "100%" }}
         camera={{ fov: 28, position: [0, 1, 4] }}
         gl={{ antialias: true, alpha: true }}
       >
@@ -232,3 +249,5 @@ export default function MannequinViewer({
 
 useGLTF.preload(MODEL_PATHS.m);
 useGLTF.preload(MODEL_PATHS.f);
+
+export default MannequinViewer;
