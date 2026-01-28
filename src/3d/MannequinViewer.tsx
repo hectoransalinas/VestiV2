@@ -10,7 +10,7 @@ const MODEL_PATHS: Record<Sex, string> = {
   f: "/models/mannequin_f.glb",
 };
 
-// Material premium mate (mantiene tu look actual)
+// Material premium mate
 const MAT = new THREE.MeshStandardMaterial({
   color: new THREE.Color("#8b8f97"),
   roughness: 0.85,
@@ -45,18 +45,12 @@ function findLocators(root: THREE.Object3D): Locators | null {
 }
 
 /**
- * AutoFit por LOCATORS (solución sólida)
- * - NO depende de Box3 ni bounds de SkinnedMesh
- * - Altura real: head->feet
- * - Ancho real: shoulderL->shoulderR
- * - Pies al piso: feet.y => 0 (set absoluto)
- * - Cámara estable: calcula distancia por FOV + alto/ancho reales
+ * AutoFit por LOCATORS
+ * - Pies al piso (set absoluto)
+ * - Distancia por alto/ancho reales
+ * - "Nike framing": sesgo de encuadre para que el cuerpo quede más abajo en pantalla (como tu guía amarilla)
  */
-function AutoFitCamera({
-  subjectRef,
-}: {
-  subjectRef: React.RefObject<THREE.Object3D>;
-}) {
+function AutoFitCamera({ subjectRef }: { subjectRef: React.RefObject<THREE.Object3D> }) {
   const { camera, size } = useThree();
   const baseYMap = useRef<Map<string, number>>(new Map());
   const lastKey = useRef<string>("");
@@ -76,13 +70,11 @@ function AutoFitCamera({
     const loc = findLocators(subject);
     if (!loc) return;
 
-    // Guardamos Y base por UUID (set absoluto, no acumulativo)
-    if (!baseYMap.current.has(subject.uuid)) {
-      baseYMap.current.set(subject.uuid, subject.position.y);
-    }
+    // Base Y estable (evita acumulaciones)
+    if (!baseYMap.current.has(subject.uuid)) baseYMap.current.set(subject.uuid, subject.position.y);
     const baseY = baseYMap.current.get(subject.uuid) ?? 0;
 
-    // --- Medimos en world ---
+    // Medimos en world
     const vHead = new THREE.Vector3();
     const vFeet = new THREE.Vector3();
     const vSL = new THREE.Vector3();
@@ -96,40 +88,37 @@ function AutoFitCamera({
     const height = Math.max(0.6, vHead.y - vFeet.y);
     const shoulderWidth = Math.max(0.25, vSL.distanceTo(vSR));
 
-    // --- Pies al piso (set absoluto) ---
-    // Queremos feet.y => 0, movemos el subject (root) en Y.
-    // Delta = -vFeet.y (world). Como el subject no tiene parent (en el Canvas),
-    // esto es estable y directo.
+    // Pies al piso (feet.y => 0) set absoluto
     subject.position.y = baseY - vFeet.y;
     subject.updateMatrixWorld(true);
 
-    // Re-calcular head/feet luego del ajuste (para apuntar cámara perfecto)
+    // Recalcular luego del ajuste
     loc.head.getWorldPosition(vHead);
     loc.feet.getWorldPosition(vFeet);
 
-    // Target vertical:
-    // 0.55*height muestra pies y cabeza sin quedar "arriba".
-    const targetY = vFeet.y + height * 0.55;
+    // --- Nike framing ---
+    // En tus capturas, querés que el cuerpo quede "más abajo" en el panel superior.
+    // Subimos el target (miramos un poco más arriba) para que el modelo caiga hacia abajo en pantalla.
+    // 0.72 fue elegido para que cabeza quede cerca del límite superior y pies cerca del inferior del "frame" marcado.
+    const targetY = vFeet.y + height * 0.72;
 
     const cam = camera as THREE.PerspectiveCamera;
     const aspect = size.width / Math.max(1, size.height);
     const vFov = THREE.MathUtils.degToRad(cam.fov);
     const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
 
-    // Margen leve (premium, sin aire exagerado)
-    const margin = 1.10;
+    // Margen leve
+    const margin = 1.08;
 
     const distForHeight = (height / 2) / Math.tan(vFov / 2);
     const distForWidth = (shoulderWidth / 2) / Math.tan(hFov / 2);
     const dist = Math.max(distForHeight, distForWidth) * margin;
 
-    const key = `${size.width}x${size.height}|${height.toFixed(3)}|${shoulderWidth.toFixed(
-      3
-    )}|${targetY.toFixed(3)}`;
+    const key = `${size.width}x${size.height}|${height.toFixed(3)}|${shoulderWidth.toFixed(3)}|${targetY.toFixed(3)}`;
     if (key === lastKey.current) return;
     lastKey.current = key;
 
-    cam.position.set(0, targetY + height * 0.02, dist);
+    cam.position.set(0, targetY + height * 0.06, dist);
     cam.lookAt(0, targetY, 0);
     cam.updateProjectionMatrix();
   }, [camera, size.width, size.height, subjectRef]);
@@ -137,13 +126,7 @@ function AutoFitCamera({
   return null;
 }
 
-function MannequinModel({
-  sex,
-  rootRef,
-}: {
-  sex: Sex;
-  rootRef: React.RefObject<THREE.Object3D>;
-}) {
+function MannequinModel({ sex, rootRef }: { sex: Sex; rootRef: React.RefObject<THREE.Object3D> }) {
   const { scene } = useGLTF(MODEL_PATHS[sex]);
   const cloned = useMemo(() => scene.clone(true), [scene]);
 
@@ -162,11 +145,7 @@ export interface MannequinViewerProps {
   showControls?: boolean;
 }
 
-export function MannequinViewer({
-  variant,
-  sex: sexProp = "m",
-  showControls = false,
-}: MannequinViewerProps) {
+export function MannequinViewer({ variant, sex: sexProp = "m", showControls = false }: MannequinViewerProps) {
   const sex: Sex = (() => {
     if (variant === "F" || variant === "f" || (variant as any) === "female") return "f";
     if (variant === "M" || variant === "m" || (variant as any) === "male") return "m";
@@ -177,11 +156,7 @@ export function MannequinViewer({
 
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
-      <Canvas
-        style={{ width: "100%", height: "100%" }}
-        camera={{ fov: 38, position: [0, 1.2, 4] }}
-        gl={{ antialias: true, alpha: true }}
-      >
+      <Canvas style={{ width: "100%", height: "100%" }} camera={{ fov: 38, position: [0, 1.2, 4] }} gl={{ antialias: true, alpha: true }}>
         <ambientLight intensity={0.85} />
         <directionalLight position={[3, 6, 4]} intensity={0.75} />
 
@@ -191,9 +166,7 @@ export function MannequinViewer({
 
         <AutoFitCamera subjectRef={rootRef} />
 
-        {showControls ? (
-          <OrbitControls enablePan={false} enableZoom={false} enableRotate={false} />
-        ) : null}
+        {showControls ? <OrbitControls enablePan={false} enableZoom={false} enableRotate={false} /> : null}
       </Canvas>
     </div>
   );
