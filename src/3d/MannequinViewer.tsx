@@ -39,136 +39,90 @@ function forceMaterial(root: THREE.Object3D) {
   });
 }
 
-function collectBones(root: THREE.Object3D): THREE.Bone[] {
-  const bones: THREE.Bone[] = [];
-  root.traverse((o) => {
-    if ((o as any).isBone) bones.push(o as THREE.Bone);
-  });
-  return bones;
-}
-
-function computeBoneBoundsY(root: THREE.Object3D) {
-  const bones = collectBones(root);
-  const v = new THREE.Vector3();
-  let minY = Infinity;
-  let maxY = -Infinity;
-  let maxR = 0;
-
-  // Si por alguna razón no hay bones, devolvemos null para fallback
-  if (!bones.length) return null;
-
-  for (const b of bones) {
-    b.getWorldPosition(v);
-    minY = Math.min(minY, v.y);
-    maxY = Math.max(maxY, v.y);
-
-    // radio horizontal aproximado usando bones (mejor que nada, súper estable entre M/F)
-    const r = Math.hypot(v.x, v.z);
-    maxR = Math.max(maxR, r);
-  }
-
   return { minY, maxY, maxR };
 }
 
 function AutoFitCamera({ subjectRef, sex }: { subjectRef: React.RefObject<THREE.Object3D>; sex: Sex }) {
   const { camera, size } = useThree();
+  const baseYRef = useRef<number | null>(null);
   const lastKey = useRef<string>("");
 
   useEffect(() => {
-    // Aseguramos perspectiva
     if (!(camera as any).isPerspectiveCamera) return;
-    camera.near = 0.05;
-    camera.far = 200;
-    camera.updateProjectionMatrix();
+    const cam = camera as THREE.PerspectiveCamera;
+    cam.near = 0.05;
+    cam.far = 200;
+    cam.updateProjectionMatrix();
   }, [camera]);
 
-  const baseYRef = useRef<number | null>(null);
-  const lastSubjectIdRef = useRef<string>("");
-
   useEffect(() => {
     const subject = subjectRef.current;
     if (!subject) return;
-
-    // Guardamos el Y "base" del root (evita acumulación por `+=` en remount/resize)
-    if (lastSubjectIdRef.current !== subject.uuid) {
-      lastSubjectIdRef.current = subject.uuid;
-      baseYRef.current = subject.position.y;
-    }
-
-    // Normalizamos pies al piso ANTES de encuadrar
-    const bounds = computeBoneBoundsY(subject);
-    if (bounds) {
-      const baseY = baseYRef.current ?? subject.position.y;
-      // llevamos minY a 0 ajustando el root de forma absoluta (estable)
-      subject.position.y = baseY - bounds.minY;
-      subject.updateMatrixWorld(true);
-    }
-  }, [sex]);
-
-  useEffect(() => {
-    const subject = subjectRef.current;
-    if (!subject) return;
+    if (!(camera as any).isPerspectiveCamera) return;
     const cam = camera as THREE.PerspectiveCamera;
 
-    const bounds = computeBoneBoundsY(subject);
-
-    // Fallback si algo raro: usamos Box3 clásico
-    let minY: number, maxY: number, maxR: number;
-    if (bounds) {
-      minY = bounds.minY;
-      maxY = bounds.maxY;
-      maxR = Math.max(bounds.maxR, 0.25);
-    } else {
-      const box = new THREE.Box3().setFromObject(subject);
-      const sizeV = new THREE.Vector3();
-      box.getSize(sizeV);
-      const c = new THREE.Vector3();
-      box.getCenter(c);
-      minY = c.y - sizeV.y / 2;
-      maxY = c.y + sizeV.y / 2;
-      maxR = Math.max(sizeV.x, sizeV.z) / 2;
-    }
-
-    // Como ya ajustamos pies al piso, recomputamos en el espacio actual
-    // (minY debería ser ~0)
+    // Aseguramos matrices al día
     subject.updateMatrixWorld(true);
-    const bounds2 = computeBoneBoundsY(subject);
-    if (bounds2) {
-      minY = bounds2.minY;
-      maxY = bounds2.maxY;
-      maxR = Math.max(bounds2.maxR, maxR);
-    }
 
-    const height = Math.max(0.5, maxY - minY);
-    const centerY = minY + height / 2;
+    // 1) Bounds reales del OBJETO (mesh), no bones: más predecible para maniquíes
+    const box = new THREE.Box3().setFromObject(subject);
+    const sizeV = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    box.getSize(sizeV);
+    box.getCenter(center);
 
-    // Queremos ver todo el cuerpo: limitante por alto y por ancho (aspect)
+    if (!isFinite(sizeV.y) || sizeV.y < 0.001) return;
+
+    // 2) Pies al piso, estable (sin acumulación):
+    // Guardamos el "baseY" la primera vez y luego seteamos absoluto.
+    if (baseYRef.current === null) baseYRef.current = subject.position.y;
+    const baseY = baseYRef.current;
+
+    const desiredFeetY = 0; // piso
+    const delta = desiredFeetY - box.min.y; // cuánto hay que subir/bajar para que minY sea 0
+    subject.position.y = baseY + delta;
+    subject.updateMatrixWorld(true);
+
+    // 3) Recalcular bounds luego del ajuste de piso
+    const box2 = new THREE.Box3().setFromObject(subject);
+    const size2 = new THREE.Vector3();
+    const center2 = new THREE.Vector3();
+    box2.getSize(size2);
+    box2.getCenter(center2);
+
+    // Protecciones
+    const height = Math.max(0.5, size2.y);
+    const halfH = height / 2;
+
+    // 4) Auto-encuadre por alto y ancho (sin magia global)
     const aspect = size.width / Math.max(1, size.height);
     const vFov = THREE.MathUtils.degToRad(cam.fov);
     const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
-    // Clamp del radio horizontal: los bones de manos/IK pueden inflar maxR y alejar la cámara (modelo "chico").
-    const maxRClamped = THREE.MathUtils.clamp(maxR, 0.18, height * 0.28);
 
-    // Menos "tele" + menos aire => maniquí más grande y consistente entre M/F
-    const margin = sex === "m" ? 1.10 : 1.06;
-    const yBias = height * 0.05; // leve sesgo para que no se corte la cabeza sin subirlo de más
-    const distForHeight = (height / 2) / Math.tan(vFov / 2);
-    const distForWidth = (maxRClamped * 1.10) / Math.tan(hFov / 2); // ancho aproximado (con clamp)
+    const halfW = Math.max(size2.x, size2.z) / 2;
+
+    // Margen leve (premium, sin aire excesivo)
+    const margin = sex === "m" ? 1.06 : 1.06;
+
+    const distForHeight = halfH / Math.tan(vFov / 2);
+    const distForWidth = halfW / Math.tan(hFov / 2);
     const dist = Math.max(distForHeight, distForWidth) * margin;
 
-    // Cámara frontal levemente elevada
-    const target = new THREE.Vector3(0, centerY + yBias, 0);
-    const pos = new THREE.Vector3(0, centerY + yBias + height * 0.04, dist);
+    // 5) Target: centro real del maniquí (ligero bias para que cabeza no se corte)
+    const yBias = height * 0.03;
+    const target = new THREE.Vector3(center2.x, center2.y + yBias, center2.z);
 
-    // Evitamos recalcular si no cambió (M/F + resize)
-    const key = `${sex}|${size.width}x${size.height}|${height.toFixed(3)}|${maxRClamped.toFixed(3)}|${centerY.toFixed(3)}|${yBias.toFixed(3)}|${margin.toFixed(3)}`;
+    // Cámara frontal, mínima elevación
+    const pos = new THREE.Vector3(target.x, target.y + height * 0.01, dist);
+
+    const key = `${sex}|${size.width}x${size.height}|${height.toFixed(3)}|${halfW.toFixed(3)}|${target.y.toFixed(3)}|${dist.toFixed(3)}`;
     if (key === lastKey.current) return;
     lastKey.current = key;
 
     cam.position.copy(pos);
     cam.lookAt(target);
     cam.updateProjectionMatrix();
-  }, [camera, size.width, size.height, subjectRef]);
+  }, [camera, size.width, size.height, sex, subjectRef]);
 
   return null;
 }
@@ -240,7 +194,7 @@ const rootRef = useRef<THREE.Object3D>(null);
       <Canvas
         key={`${sex}-${observedSize.w}x${observedSize.h}`}
         style={{ width: "100%", height: "100%" }}
-        camera={{ fov: 34, position: [0, 1.05, 3.6] }}
+        camera={{ fov: 34, position: [0, 1, 4] }}
         gl={{ antialias: true, alpha: true }}
       >
         <ambientLight intensity={0.85} />
