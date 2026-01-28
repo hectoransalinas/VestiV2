@@ -7,7 +7,7 @@ import {
   makeRecommendation,
   FitResult,
 } from "../motor/fitEngine";
-import { MannequinViewer } from "../3d/MannequinViewer";
+import MannequinViewer from "../3d/MannequinViewer";
 
 type VestiEmbedProps = {
   categoria: GarmentCategory;
@@ -641,7 +641,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
           </button>
         </div>
 
-        <MannequinViewer variant={mannequinGender} />
+        <MannequinViewer sex={mannequinGender === "male" ? "m" : "f"} />
         <FitOverlay fit={fitUi} viewMode={viewMode} footLength={footLength} />
       </div>
 
