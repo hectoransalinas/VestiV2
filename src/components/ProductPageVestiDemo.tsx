@@ -882,46 +882,48 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
                 border: "1px solid rgba(0,0,0,0.06)",
                 background: "#ffffff",
                 display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 10,
+                 gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+                 gap: 10,
+                 minWidth: 0,
+                 boxSizing: "border-box",
               }}
             >
               {String(effectiveCategory).toLowerCase() === "upper" && (
                 <>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, minWidth: 0 }}>
                     <span style={{ color: "#6b7280" }}>Hombros (cm)</span>
                     <input
                       type="number"
                       value={perfil.hombros as any}
                       onChange={(e) => setPerfil((p) => ({ ...p, hombros: Number(e.target.value) } as any))}
-                      style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px" }}
+                      style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
                     />
                   </label>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, minWidth: 0 }}>
                     <span style={{ color: "#6b7280" }}>Pecho (cm)</span>
                     <input
                       type="number"
                       value={perfil.pecho as any}
                       onChange={(e) => setPerfil((p) => ({ ...p, pecho: Number(e.target.value) } as any))}
-                      style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px" }}
+                      style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
                     />
                   </label>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, minWidth: 0 }}>
                     <span style={{ color: "#6b7280" }}>Cintura (cm)</span>
                     <input
                       type="number"
                       value={perfil.cintura as any}
                       onChange={(e) => setPerfil((p) => ({ ...p, cintura: Number(e.target.value) } as any))}
-                      style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px" }}
+                      style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
                     />
                   </label>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, minWidth: 0 }}>
                     <span style={{ color: "#6b7280" }}>Largo torso (cm)</span>
                     <input
                       type="number"
                       value={perfil.largoTorso as any}
                       onChange={(e) => setPerfil((p) => ({ ...p, largoTorso: Number(e.target.value) } as any))}
-                      style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px" }}
+                      style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
                     />
                   </label>
                 </>
@@ -929,35 +931,35 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
 
               {String(effectiveCategory).toLowerCase() === "pants" && (
                 <>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, minWidth: 0 }}>
                     <span style={{ color: "#6b7280" }}>Cintura (cm)</span>
                     <input
                       type="number"
                       value={perfil.cintura as any}
                       onChange={(e) => setPerfil((p) => ({ ...p, cintura: Number(e.target.value) } as any))}
-                      style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px" }}
+                      style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
                     />
                   </label>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, minWidth: 0 }}>
                     <span style={{ color: "#6b7280" }}>Largo pierna (cm)</span>
                     <input
                       type="number"
                       value={perfil.largoPierna as any}
                       onChange={(e) => setPerfil((p) => ({ ...p, largoPierna: Number(e.target.value) } as any))}
-                      style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px" }}
+                      style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
                     />
                   </label>
                 </>
               )}
 
               {String(effectiveCategory).toLowerCase() === "shoes" && (
-                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, gridColumn: "1 / -1" }}>
+                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, gridColumn: "1 / -1", minWidth: 0 }}>
                   <span style={{ color: "#6b7280" }}>Largo de pie (cm)</span>
                   <input
                     type="number"
                     value={(perfil as any).pieLargo ?? ""}
                     onChange={(e) => setPerfil((p) => ({ ...p, pieLargo: Number(e.target.value) } as any))}
-                    style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px" }}
+                    style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
                   />
                 </label>
               )}
