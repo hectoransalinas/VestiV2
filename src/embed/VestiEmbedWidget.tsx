@@ -1,4 +1,5 @@
-import React, { useMemo, useState, useRef, useEffect } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
+import type { CSSProperties } from "react";
 import {
   Garment,
   GarmentCategory,
@@ -7,7 +8,7 @@ import {
   makeRecommendation,
   FitResult,
 } from "../motor/fitEngine";
-import { MannequinViewer, type MannequinAnchors2D } from "../3d/MannequinViewer";
+import { MannequinViewer } from "../3d/MannequinViewer";
 
 type VestiEmbedProps = {
   categoria: GarmentCategory;
@@ -70,30 +71,6 @@ const lengthBarLayout: Record<string, { top: string; bottom: string }> = {
   largoTorso: { top: "32%", bottom: "42%" },
   largoPierna: { top: "58%", bottom: "10%" },
 };
-
-  const overlayTop = (zone: "hombros" | "pecho" | "cintura") => {
-    if (!anchors2D) return null;
-    const p = anchors2D.points[zone];
-    if (!p?.visible) return null;
-    return p.y;
-  };
-
-  const lengthRange = (zone: "largoTorso" | "largoPierna") => {
-    if (!anchors2D) return null;
-    const pecho = anchors2D.points.pecho;
-    const cintura = anchors2D.points.cintura;
-    const pie = anchors2D.points.pie;
-    if (!pecho.visible || !cintura.visible || !pie.visible) return null;
-
-    if (zone === "largoTorso") {
-      const top = Math.min(pecho.y, cintura.y);
-      const bottom = Math.max(pecho.y, cintura.y);
-      return { top, bottom };
-    }
-    const top = Math.min(cintura.y, pie.y);
-    const bottom = Math.max(cintura.y, pie.y);
-    return { top, bottom };
-  };
 
 type ViewMode = "top" | "bottom" | "shoes";
 
@@ -224,8 +201,7 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
   return (
     <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
       {widthZones.map((z) => {
-        const topPx = overlayTop(z.zone as any);
-        const top = topPx != null ? `${topPx}px` : (widthTopPercent[z.zone] ?? "45%");
+        const top = widthTopPercent[z.zone] ?? "45%";
         const color = zoneColor(z.status);
         return (
           <div
@@ -235,7 +211,6 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
               left: "10%",
               right: "10%",
               top,
-              transform: topPx != null ? "translateY(-50%)" : undefined,
               height: "5.5%",
               borderRadius: 999,
               background: color,
@@ -257,23 +232,19 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
       {lengthZones.map((lz) => {
         const layout = lengthBarLayout[lz.zone];
         if (!layout) return null;
-        const range = lengthRange(lz.zone as any);
-        const barTop = range ? `${range.top}px` : layout.top;
-        const barHeight = range ? `${Math.max(8, range.bottom - range.top)}px` : undefined;
-
         const color = zoneColor(lz.status);
         const shortLabel = lz.zone === "largoTorso" ? "Torso" : "Pierna";
 
-        const chipTop = range ? `${(range.top + range.bottom) / 2}px` : (lz.zone === "largoTorso" ? "24%" : lz.zone === "largoPierna" ? "76%" : `calc(${layout.top} - 3%)`);
+        const chipTop =
+          lz.zone === "largoTorso" ? "24%" : lz.zone === "largoPierna" ? "76%" : `calc(${layout.top} - 3%)`;
 
         return (
           <React.Fragment key={lz.zone}>
             <div
               style={{
                 position: "absolute",
-                top: barTop,
-                height: barHeight,
-                bottom: barHeight ? undefined : layout.bottom,
+                top: layout.top,
+                bottom: layout.bottom,
                 right: "5%",
                 width: "3%",
                 borderRadius: 999,
@@ -663,7 +634,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
           </button>
         </div>
 
-        <MannequinViewer onAnchorsChange={setAnchors2D} variant={mannequinGender} />
+        <MannequinViewer variant={mannequinGender} />
         <FitOverlay fit={fitUi} viewMode={viewMode} footLength={footLength} />
       </div>
 
@@ -805,4 +776,3 @@ if (typeof window !== "undefined") {
 }
 
 export default VestiEmbedWidget;
-  const [anchors2D, setAnchors2D] = useState<MannequinAnchors2D | null>(null);

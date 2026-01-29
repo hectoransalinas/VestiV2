@@ -1,4 +1,4 @@
-import React from "react";
+import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./styles.css";
@@ -14,9 +14,9 @@ import type {
 ReactDOM.createRoot(
   document.getElementById("root") as HTMLElement
 ).render(
-  <React.StrictMode>
+  <StrictMode>
     <App />
-  </React.StrictMode>
+  </StrictMode>
 );
 
 export type VestiInitOptions = {
@@ -58,14 +58,14 @@ window.VestiAI = {
 
       const root = ReactDOM.createRoot(container);
       root.render(
-        <React.StrictMode>
+        <StrictMode>
           <VestiProductEmbed
             garment={options.garment}
             category={options.category}
             perfilInicial={options.perfilInicial}
             onRecomendacion={options.onRecomendacion}
           />
-        </React.StrictMode>
+        </StrictMode>
       );
     } catch (err) {
       console.error("[VestiAI] Error inicializando el widget:", err);
