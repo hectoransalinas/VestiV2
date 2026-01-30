@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import React from "react";
 import {
   Garment,
   GarmentCategory,
@@ -19,7 +19,7 @@ export type VestiProductEmbedProps = {
     avatarUrl: string;
   }) => void;
   className?: string;
-  style?: CSSProperties;
+  style?: React.CSSProperties;
 };
 
 /**
@@ -29,14 +29,14 @@ export type VestiProductEmbedProps = {
  * en fichas de producto reales. Envuelve al VestiEmbedWidget
  * y expone una interfaz simple basada en `garment` + callbacks.
  */
-export function VestiProductEmbed({
+export const VestiProductEmbed: React.FC<VestiProductEmbedProps> = ({
   garment,
   category,
   perfilInicial,
   onRecomendacion,
   className,
   style,
-}: VestiProductEmbedProps) {
+}) => {
     // Si todavía no llegó el producto (por postMessage), evitamos crashear.
   if (!garment) {
     return (
@@ -61,4 +61,4 @@ export function VestiProductEmbed({
       />
     </div>
   );
-}
+};

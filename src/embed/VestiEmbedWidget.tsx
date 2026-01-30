@@ -1,5 +1,4 @@
-import { useMemo, useState, useRef, useEffect } from "react";
-import type { CSSProperties } from "react";
+import React, { useMemo, useState, useRef, useEffect } from "react";
 import {
   Garment,
   GarmentCategory,

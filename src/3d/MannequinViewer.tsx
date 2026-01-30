@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 
@@ -21,154 +21,12 @@ export interface MannequinViewerProps {
   variant?: MannequinVariant;
   sex?: Sex;
   showControls?: boolean;
-
-  /** Optional: project real mannequin points to 2D so overlays can anchor without percentages (no camera changes). */
-  onAnchorsChange?: (data: MannequinAnchors2D) => void;
 }
-
-export type MannequinAnchorKey =
-  | "hombros"
-  | "pecho"
-  | "cintura"
-  | "rodilla"
-  | "pie"
-  | "hombroL"
-  | "hombroR";
-
-export type MannequinAnchors2D = {
-  width: number;
-  height: number;
-  points: Record<MannequinAnchorKey, { x: number; y: number; visible: boolean }>;
-};
-
 
 const MODEL_PATHS: Record<Sex, string> = {
   m: "/models/mannequin_m.glb",
   f: "/models/mannequin_f.glb",
 };
-
-const ANCHOR_NODES = {
-  // Prefer explicit locators if present in the GLB
-  hombroL: ["vesti_shoulderL", "Bone.003"],
-  hombroR: ["vesti_shoulderR", "Bone.011"],
-  pecho: ["Bone.001"],
-  cintura: ["Bone.018"],
-  rodillaL: ["Bone.008"],
-  rodillaR: ["Bone.016"],
-  pieL: ["Bone.009"],
-  pieR: ["Bone.017"],
-} as const;
-
-function projectToScreen(
-  vWorld: THREE.Vector3,
-  camera: THREE.Camera,
-  width: number,
-  height: number
-): { x: number; y: number; visible: boolean } {
-  const v = vWorld.clone().project(camera);
-  const x = (v.x * 0.5 + 0.5) * width;
-  const y = (-v.y * 0.5 + 0.5) * height;
-  const visible = v.z > -1 && v.z < 1;
-  return { x, y, visible };
-}
-
-function findFirstNamed(subject: THREE.Object3D, names: readonly string[]): THREE.Object3D | null {
-  for (const n of names) {
-    const obj = subject.getObjectByName(n);
-    if (obj) return obj;
-  }
-  return null;
-}
-
-function AnchorProjector({
-  subjectRef,
-  onAnchorsChange,
-}: {
-  subjectRef: React.RefObject<THREE.Object3D>;
-  onAnchorsChange?: (data: MannequinAnchors2D) => void;
-}) {
-  const { camera, size } = useThree();
-  const cacheRef = useRef<Record<string, THREE.Object3D | null> | null>(null);
-  const lastKeyRef = useRef<string>("");
-
-  useEffect(() => {
-    cacheRef.current = null;
-    lastKeyRef.current = "";
-  }, [subjectRef]);
-
-  useFrame(() => {
-    if (!onAnchorsChange) return;
-    const subject = subjectRef.current;
-    if (!subject) return;
-
-    if (!cacheRef.current) {
-      cacheRef.current = {
-        hombroL: findFirstNamed(subject, ANCHOR_NODES.hombroL),
-        hombroR: findFirstNamed(subject, ANCHOR_NODES.hombroR),
-        pecho: findFirstNamed(subject, ANCHOR_NODES.pecho),
-        cintura: findFirstNamed(subject, ANCHOR_NODES.cintura),
-        rodillaL: findFirstNamed(subject, ANCHOR_NODES.rodillaL),
-        rodillaR: findFirstNamed(subject, ANCHOR_NODES.rodillaR),
-        pieL: findFirstNamed(subject, ANCHOR_NODES.pieL),
-        pieR: findFirstNamed(subject, ANCHOR_NODES.pieR),
-      };
-    }
-
-    const w = Math.max(1, Math.floor(size.width));
-    const h = Math.max(1, Math.floor(size.height));
-
-    const wp = (o: THREE.Object3D | null) => {
-      if (!o) return null;
-      const v = new THREE.Vector3();
-      o.getWorldPosition(v);
-      return v;
-    };
-
-    const hombroL = wp(cacheRef.current.hombroL);
-    const hombroR = wp(cacheRef.current.hombroR);
-    const pecho = wp(cacheRef.current.pecho);
-    const cintura = wp(cacheRef.current.cintura);
-    const rodillaL = wp(cacheRef.current.rodillaL);
-    const rodillaR = wp(cacheRef.current.rodillaR);
-    const pieL = wp(cacheRef.current.pieL);
-    const pieR = wp(cacheRef.current.pieR);
-
-    const mid = (a: THREE.Vector3 | null, b: THREE.Vector3 | null) => {
-      if (!a || !b) return null;
-      return a.clone().add(b).multiplyScalar(0.5);
-    };
-
-    const hombrosMid = mid(hombroL, hombroR);
-    const rodillaMid = mid(rodillaL, rodillaR);
-    const pieMid = mid(pieL, pieR);
-
-    const points: MannequinAnchors2D["points"] = {
-      hombros: hombrosMid ? projectToScreen(hombrosMid, camera, w, h) : { x: 0, y: 0, visible: false },
-      pecho: pecho ? projectToScreen(pecho, camera, w, h) : { x: 0, y: 0, visible: false },
-      cintura: cintura ? projectToScreen(cintura, camera, w, h) : { x: 0, y: 0, visible: false },
-      rodilla: rodillaMid ? projectToScreen(rodillaMid, camera, w, h) : { x: 0, y: 0, visible: false },
-      pie: pieMid ? projectToScreen(pieMid, camera, w, h) : { x: 0, y: 0, visible: false },
-      hombroL: hombroL ? projectToScreen(hombroL, camera, w, h) : { x: 0, y: 0, visible: false },
-      hombroR: hombroR ? projectToScreen(hombroR, camera, w, h) : { x: 0, y: 0, visible: false },
-    };
-
-    // reduce spam: stringify key with coarse rounding
-    const key = JSON.stringify({
-      w,
-      h,
-      p: Object.fromEntries(
-        Object.entries(points).map(([k, v]) => [k, [Math.round(v.x), Math.round(v.y), v.visible ? 1 : 0]])
-      ),
-    });
-
-    if (key !== lastKeyRef.current) {
-      lastKeyRef.current = key;
-      onAnchorsChange({ width: w, height: h, points });
-    }
-  });
-
-  return null;
-}
 
 // Target height in "meters" (world units) for consistent framing
 const TARGET_HEIGHT: Record<Sex, number> = {
@@ -315,7 +173,7 @@ function MannequinModel({ sex, rootRef }: { sex: Sex; rootRef: React.RefObject<T
   return <primitive ref={rootRef as any} object={cloned} />;
 }
 
-export function MannequinViewer({ variant, sex: sexProp = "m", showControls = false, onAnchorsChange }: MannequinViewerProps) {
+export function MannequinViewer({ variant, sex: sexProp = "m", showControls = false }: MannequinViewerProps) {
   const sex: Sex = (() => {
     if (variant === "F" || variant === "f" || (variant as any) === "female") return "f";
     if (variant === "M" || variant === "m" || (variant as any) === "male") return "m";
@@ -363,7 +221,6 @@ export function MannequinViewer({ variant, sex: sexProp = "m", showControls = fa
 
         <group>
           <MannequinModel sex={sex} rootRef={rootRef} />
-          <AnchorProjector subjectRef={rootRef} onAnchorsChange={onAnchorsChange} />
         </group>
 
         <AutoFitCamera subjectRef={rootRef} sex={sex} />

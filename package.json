@@ -5,10 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run build:app",
-    "preview": "vite preview",
-    "build:app": "vite build",
-    "build:embed": "vite build -c vite.embed.config.ts"
+    "build": "vite build",
+    "preview": "vite preview"
   },
   "dependencies": {
     "@react-three/drei": "^9.86.3",
