@@ -68,8 +68,8 @@ const widthTopPercent: Record<string, string> = {
 };
 
 const lengthBarLayout: Record<string, { top: string; bottom: string }> = {
-  largoTorso: { top: "28%", bottom: "62%" },
-  largoPierna: { top: "38%", bottom: "0%" },
+  largoTorso: { top: "28%", bottom: "68%" },
+  largoPierna: { top: "38%", bottom: "12%" },
 };
 
 type ViewMode = "top" | "bottom" | "shoes";
@@ -201,7 +201,7 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength, anchorA
   return (
     <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
       {widthZones.map((z) => {
-        const top = widthTopPercent[z.zone] ?? "45%";
+        const top = (isBottomView && z.zone === "cintura") ? "40%" : (widthTopPercent[z.zone] ?? "45%");
         const color = zoneColor(z.status);
         return (
           <div
@@ -236,7 +236,7 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength, anchorA
         const shortLabel = lz.zone === "largoTorso" ? "Torso" : "Pierna";
 
         const chipTop =
-          lz.zone === "largoTorso" ? "10%" : lz.zone === "largoPierna" ? "86%" : `calc(${layout.top} - 3%)`;
+          lz.zone === "largoTorso" ? "10%" : lz.zone === "largoPierna" ? "82%" : `calc(${layout.top} - 3%)`;
 
         return (
           <Fragment key={lz.zone}>
@@ -294,7 +294,7 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength, anchorA
               position: "absolute",
               left: "26%",
               right: "26%",
-              bottom: "2%",
+              bottom: "6%",
               height: "13%",
               borderRadius: 999,
               background: shoeColor,
@@ -306,7 +306,7 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength, anchorA
             style={{
               position: "absolute",
               left: "50%",
-              bottom: "22%",
+              bottom: "26%",
               transform: "translateX(-50%)",
               padding: "4px 10px",
               borderRadius: 999,
