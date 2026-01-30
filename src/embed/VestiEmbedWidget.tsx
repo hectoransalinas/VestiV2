@@ -62,13 +62,13 @@ function chipBorderColor(status: string): string {
 
 // Mapeo de zona -> posición vertical (porcentaje sobre alto del visor)
 const widthTopPercent: Record<string, string> = {
-  hombros: "13%",
-  pecho: "24%",
-  cintura: "38%",
+  hombros: "18%",
+  pecho: "29%",
+  cintura: "43%",
 };
 
 const lengthBarLayout: Record<string, { top: string; bottom: string }> = {
-  largoTorso: { top: "13%", bottom: "62%" },
+  largoTorso: { top: "18%", bottom: "62%" },
   largoPierna: { top: "38%", bottom: "0%" },
 };
 
@@ -236,7 +236,7 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength, anchorA
         const shortLabel = lz.zone === "largoTorso" ? "Torso" : "Pierna";
 
         const chipTop =
-          lz.zone === "largoTorso" ? "34%" : lz.zone === "largoPierna" ? "86%" : `calc(${layout.top} - 3%)`;
+          lz.zone === "largoTorso" ? "39%" : lz.zone === "largoPierna" ? "86%" : `calc(${layout.top} - 3%)`;
 
         return (
           <Fragment key={lz.zone}>
