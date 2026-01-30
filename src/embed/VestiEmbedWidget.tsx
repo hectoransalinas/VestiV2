@@ -1,4 +1,5 @@
-import React, { useMemo, useState, useRef, useEffect } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
+import type { CSSProperties } from "react";
 import {
   Garment,
   GarmentCategory,
@@ -7,7 +8,7 @@ import {
   makeRecommendation,
   FitResult,
 } from "../motor/fitEngine";
-import { MannequinViewer } from "../3d/MannequinViewer";
+import { MannequinViewer, type MannequinAnchorApi } from "../3d/MannequinViewer";
 
 type VestiEmbedProps = {
   categoria: GarmentCategory;
@@ -77,6 +78,7 @@ type OverlayProps = {
   fit: FitResult;
   viewMode: ViewMode;
   footLength: number;
+  anchorApi?: MannequinAnchorApi | null;
 };
 
 // Mapear largo de pie en cm -> talle EU aproximado (36–45)
@@ -197,10 +199,47 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
   const shoeFit = shoeOverlayFromFit(fit, footLength);
   const shoeColor = zoneColor(shoeFit.statusKey);
 
+
+  const sizePx = anchorApi?.getSize?.() ?? null;
+  const hPx = sizePx?.height ?? 0;
+
+  const avgY = (a?: { y: number } | null, b?: { y: number } | null): number | null => {
+    if (!a || !b) return null;
+    const y = (a.y + b.y) / 2;
+    return Number.isFinite(y) ? y : null;
+  };
+
+  const anchorYForZone = (zone: string): number | null => {
+    if (!anchorApi) return null;
+
+    // Prefer explicit VESTI locators when available
+    if (zone === "hombros") {
+      const L = anchorApi.getPoint("vesti_shoulderL");
+      const R = anchorApi.getPoint("vesti_shoulderR");
+      return avgY(L, R);
+    }
+    if (zone === "pecho") {
+      return anchorApi.getPoint("Bone.010")?.y ?? null;
+    }
+    if (zone === "cintura") {
+      return anchorApi.getPoint("Bone.002")?.y ?? null;
+    }
+    if (zone === "cadera") {
+      return anchorApi.getPoint("Bone.001")?.y ?? null;
+    }
+    if (zone === "feet") {
+      return anchorApi.getPoint("vesti_feet")?.y ?? null;
+    }
+
+    return null;
+  };
+
   return (
     <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
       {widthZones.map((z) => {
-        const top = widthTopPercent[z.zone] ?? "45%";
+        const y = anchorYForZone(z.zone);
+        const top = y != null && hPx > 0 ? `${Math.max(0, y - hPx * 0.055 * 0.5)}px` : widthTopPercent[z.zone] ?? "45%";
+        const barH = y != null && hPx > 0 ? `${Math.max(10, hPx * 0.055)}px` : "5.5%";
         const color = zoneColor(z.status);
         return (
           <div
@@ -210,7 +249,7 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
               left: "10%",
               right: "10%",
               top,
-              height: "5.5%",
+              height: barH,
               borderRadius: 999,
               background: color,
               display: "flex",
@@ -229,21 +268,56 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
       })}
 
       {lengthZones.map((lz) => {
-        const layout = lengthBarLayout[lz.zone];
-        if (!layout) return null;
+        const layout = lengthBarLayout[lz.zone] ?? null;
+
+        // If we have real anchors, compute top/bottom in px from bones/locators
+        let topPx: number | null = null;
+        let bottomPx: number | null = null;
+
+        if (anchorApi && hPx > 0) {
+          if (lz.zone === "largoTorso") {
+            const yTop = anchorYForZone("pecho") ?? anchorYForZone("hombros");
+            const yBottom = anchorYForZone("cintura");
+            if (yTop != null && yBottom != null) {
+              topPx = Math.min(yTop, yBottom);
+              bottomPx = Math.max(yTop, yBottom);
+            }
+          } else if (lz.zone === "largoPierna") {
+            const yTop = anchorYForZone("cadera") ?? anchorYForZone("cintura");
+            const yBottom = anchorYForZone("feet");
+            if (yTop != null && yBottom != null) {
+              topPx = Math.min(yTop, yBottom);
+              bottomPx = Math.max(yTop, yBottom);
+            }
+          }
+        }
+
+        // Clamp with safe padding so nothing touches the edges
+        const pad = hPx > 0 ? Math.max(14, hPx * 0.025) : 18;
+        if (topPx != null) topPx = Math.max(pad, topPx);
+        if (bottomPx != null) bottomPx = Math.min(hPx - pad, bottomPx);
+
+        // Fallback to old percentage layout if anchors aren't available
+        if (!layout && (topPx == null || bottomPx == null)) return null;
         const color = zoneColor(lz.status);
         const shortLabel = lz.zone === "largoTorso" ? "Torso" : "Pierna";
 
         const chipTop =
-          lz.zone === "largoTorso" ? "24%" : lz.zone === "largoPierna" ? "76%" : `calc(${layout.top} - 3%)`;
+          topPx != null && bottomPx != null
+            ? `${Math.max(0, (topPx + bottomPx) / 2 - 14)}px`
+            : lz.zone === "largoTorso"
+            ? "24%"
+            : lz.zone === "largoPierna"
+            ? "76%"
+            : `calc(${layout!.top} - 3%)`;
 
         return (
           <React.Fragment key={lz.zone}>
             <div
               style={{
                 position: "absolute",
-                top: layout.top,
-                bottom: layout.bottom,
+                top: topPx != null ? `${topPx}px` : layout!.top,
+                bottom: bottomPx != null ? `${Math.max(0, hPx - bottomPx)}px` : layout!.bottom,
                 right: "5%",
                 width: "3%",
                 borderRadius: 999,
@@ -372,6 +446,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
   const [footLength, setFootLength] = useState<number>(26);
 
   const [mannequinGender, setMannequinGender] = useState<"M" | "F">("M");
+  const [anchorApi, setAnchorApi] = useState<MannequinAnchorApi | null>(null);
 
   const fit = useMemo(() => computeFit(user, prenda), [user, prenda]);
   const fitUi = useMemo(() => normalizeFitForUi(fit), [fit]);
@@ -633,8 +708,8 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
           </button>
         </div>
 
-        <MannequinViewer variant={mannequinGender} />
-        <FitOverlay fit={fitUi} viewMode={viewMode} footLength={footLength} />
+        <MannequinViewer variant={mannequinGender} onAnchorsReady={setAnchorApi} />
+        <FitOverlay fit={fitUi} viewMode={viewMode} footLength={footLength} anchorApi={anchorApi} />
       </div>
 
       {/* Recomendación (solo modo app/demo) */}

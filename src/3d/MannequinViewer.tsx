@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Canvas, useThree } from "@react-three/fiber";
+import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { OrbitControls, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 
@@ -21,7 +21,21 @@ export interface MannequinViewerProps {
   variant?: MannequinVariant;
   sex?: Sex;
   showControls?: boolean;
+  /** Optional: expose stable anchor projection API (does NOT change camera/framing). */
+  onAnchorsReady?: (api: MannequinAnchorApi) => void;
 }
+
+export type MannequinAnchorPoint = { x: number; y: number };
+
+export type MannequinAnchorApi = {
+  /** Canvas pixel size */
+  getSize: () => { width: number; height: number };
+  /** World position of an object/bone by name (inside the cloned model). */
+  getWorld: (name: string) => THREE.Vector3 | null;
+  /** Project an object/bone by name into 2D canvas pixels (top-left origin). */
+  getPoint: (name: string) => MannequinAnchorPoint | null;
+};
+
 
 const MODEL_PATHS: Record<Sex, string> = {
   m: "/models/mannequin_m.glb",
@@ -159,6 +173,76 @@ function AutoFitCamera({ subjectRef, sex }: { subjectRef: React.RefObject<THREE.
   return null;
 }
 
+
+function ExposeAnchors({
+  subjectRef,
+  onReady,
+}: {
+  subjectRef: React.RefObject<THREE.Object3D>;
+  onReady?: (api: MannequinAnchorApi) => void;
+}) {
+  const { camera, size } = useThree();
+  const sentRef = useRef<string>("");
+
+  // keep a lightweight name->object cache for this model instance
+  const cacheRef = useRef<Map<string, THREE.Object3D>>(new Map());
+
+  const findObject = (name: string): THREE.Object3D | null => {
+    const cached = cacheRef.current.get(name);
+    if (cached) return cached;
+    const root = subjectRef.current;
+    if (!root) return null;
+    let found: THREE.Object3D | null = null;
+    root.traverse((o) => {
+      if (found) return;
+      if (o.name === name) found = o;
+    });
+    if (found) cacheRef.current.set(name, found);
+    return found;
+  };
+
+  const getWorld = (name: string): THREE.Vector3 | null => {
+    const obj = findObject(name);
+    if (!obj) return null;
+    const v = new THREE.Vector3();
+    obj.getWorldPosition(v);
+    return v;
+  };
+
+  const getPoint = (name: string): MannequinAnchorPoint | null => {
+    const v = getWorld(name);
+    if (!v) return null;
+    const p = v.clone().project(camera as any);
+    const x = (p.x * 0.5 + 0.5) * size.width;
+    const y = (-p.y * 0.5 + 0.5) * size.height;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    return { x, y };
+  };
+
+  // In case something animates or subtle changes occur, keep cache valid
+  useFrame(() => {
+    // noop: hook keeps component in render loop so projections stay consistent
+  });
+
+  useEffect(() => {
+    if (!onReady) return;
+    if (!subjectRef.current) return;
+    if (!size.width || !size.height) return;
+
+    const key = `${size.width}x${size.height}`;
+    if (sentRef.current === key) return;
+    sentRef.current = key;
+
+    onReady({
+      getSize: () => ({ width: size.width, height: size.height }),
+      getWorld,
+      getPoint,
+    });
+  }, [onReady, size.width, size.height, subjectRef]);
+
+  return null;
+}
+
 function MannequinModel({ sex, rootRef }: { sex: Sex; rootRef: React.RefObject<THREE.Object3D> }) {
   const { scene } = useGLTF(MODEL_PATHS[sex]);
 
@@ -173,7 +257,7 @@ function MannequinModel({ sex, rootRef }: { sex: Sex; rootRef: React.RefObject<T
   return <primitive ref={rootRef as any} object={cloned} />;
 }
 
-export function MannequinViewer({ variant, sex: sexProp = "m", showControls = false }: MannequinViewerProps) {
+export function MannequinViewer({ variant, sex: sexProp = "m", showControls = false, onAnchorsReady }: MannequinViewerProps) {
   const sex: Sex = (() => {
     if (variant === "F" || variant === "f" || (variant as any) === "female") return "f";
     if (variant === "M" || variant === "m" || (variant as any) === "male") return "m";
@@ -224,6 +308,8 @@ export function MannequinViewer({ variant, sex: sexProp = "m", showControls = fa
         </group>
 
         <AutoFitCamera subjectRef={rootRef} sex={sex} />
+
+        <ExposeAnchors subjectRef={rootRef} onReady={onAnchorsReady} />
 
         {showControls ? (
           <OrbitControls enablePan={false} enableZoom={false} enableRotate={false} target={[0, 1, 0]} />
