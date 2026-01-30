@@ -68,7 +68,7 @@ const widthTopPercent: Record<string, string> = {
 };
 
 const lengthBarLayout: Record<string, { top: string; bottom: string }> = {
-  largoTorso: { top: "18%", bottom: "62%" },
+  largoTorso: { top: "28%", bottom: "62%" },
   largoPierna: { top: "38%", bottom: "0%" },
 };
 
@@ -236,7 +236,7 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength, anchorA
         const shortLabel = lz.zone === "largoTorso" ? "Torso" : "Pierna";
 
         const chipTop =
-          lz.zone === "largoTorso" ? "39%" : lz.zone === "largoPierna" ? "86%" : `calc(${layout.top} - 3%)`;
+          lz.zone === "largoTorso" ? "10%" : lz.zone === "largoPierna" ? "86%" : `calc(${layout.top} - 3%)`;
 
         return (
           <Fragment key={lz.zone}>
