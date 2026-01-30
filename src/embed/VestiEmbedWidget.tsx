@@ -165,7 +165,7 @@ function normalizeFitForUi(fit: any): any {
   return fit;
 }
 
-const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength }) => {
+const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength, anchorApi }) => {
   if (!fit && viewMode !== "shoes") return null;
 
   const isTopView = viewMode === "top";
