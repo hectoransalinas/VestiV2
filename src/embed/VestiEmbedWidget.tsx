@@ -68,7 +68,7 @@ const widthTopPercent: Record<string, string> = {
 };
 
 const lengthBarLayout: Record<string, { top: string; bottom: string }> = {
-  largoTorso: { top: "28%", bottom: "74%" },
+  largoTorso: { top: "28%", bottom: "54%" },
   largoPierna: { top: "38%", bottom: "12%" },
 };
 
