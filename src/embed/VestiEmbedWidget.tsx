@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, useEffect } from "react";
+import { useMemo, useState, useRef, useEffect, Fragment } from "react";
 import type { CSSProperties } from "react";
 import {
   Garment,
@@ -312,7 +312,7 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength, anchorA
             : `calc(${layout!.top} - 3%)`;
 
         return (
-          <React.Fragment key={lz.zone}>
+          <Fragment key={lz.zone}>
             <div
               style={{
                 position: "absolute",
@@ -356,7 +356,7 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength, anchorA
               <span style={{ fontWeight: 600 }}>{shortLabel}:</span>
               <span>{lz.status}</span>
             </div>
-          </React.Fragment>
+          </Fragment>
         );
       })}
 
