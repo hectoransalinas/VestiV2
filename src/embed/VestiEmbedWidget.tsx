@@ -62,14 +62,14 @@ function chipBorderColor(status: string): string {
 
 // Mapeo de zona -> posición vertical (porcentaje sobre alto del visor)
 const widthTopPercent: Record<string, string> = {
-  hombros: "33%",
-  pecho: "44%",
-  cintura: "58%",
+  hombros: "3%",
+  pecho: "14%",
+  cintura: "28%",
 };
 
 const lengthBarLayout: Record<string, { top: string; bottom: string }> = {
-  largoTorso: { top: "32%", bottom: "42%" },
-  largoPierna: { top: "58%", bottom: "10%" },
+  largoTorso: { top: "2%", bottom: "12%" },
+  largoPierna: { top: "28%", bottom: "0%" },
 };
 
 type ViewMode = "top" | "bottom" | "shoes";
