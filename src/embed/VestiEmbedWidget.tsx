@@ -209,6 +209,31 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength, anchorA
     return Number.isFinite(y) ? y : null;
   };
 
+
+  // Anchor calibration: prefer explicit locators/bones, but validate ordering.
+  // If the model's internal names vary (or projections come back inconsistent),
+  // fall back to stable proportions between head and feet locators (still GLB-based, not viewport %).
+  const headY = anchorApi?.getPoint?.("vesti_head")?.y ?? null;
+  const feetY = anchorApi?.getPoint?.("vesti_feet")?.y ?? null;
+
+  const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+
+  const proportionalY = (zone: WidthZone["zone"]): number | null => {
+    if (headY == null || feetY == null) return null;
+
+    // t = 0 at head, 1 at feet
+    const tMap: Record<WidthZone["zone"], number> = {
+      hombros: 0.22,
+      pecho: 0.32,
+      cintura: 0.45,
+      cadera: 0.52,
+      feet: 1.0,
+    };
+
+    const t = tMap[zone] ?? 0.45;
+    return lerp(headY, feetY, t);
+  };
+
   const anchorYForZone = (zone: string): number | null => {
     if (!anchorApi) return null;
 
@@ -232,6 +257,34 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength, anchorA
     }
 
     return null;
+
+  const anchorYForZone = (zone: WidthZone["zone"]): number | null => {
+    if (!anchorApi) return null;
+
+    const y = directAnchorY(zone);
+    if (y == null) return proportionalY(zone);
+
+    // Validate ordering (top-to-bottom): hombros < pecho < cintura < cadera < feet
+    const yh = directAnchorY("hombros");
+    const yp = directAnchorY("pecho");
+    const yc = directAnchorY("cintura");
+    const yca = directAnchorY("cadera");
+    const yf = directAnchorY("feet");
+
+    const ok =
+      yh != null &&
+      yp != null &&
+      yc != null &&
+      yca != null &&
+      yf != null &&
+      yh < yp &&
+      yp < yc &&
+      yc < yca &&
+      yca < yf;
+
+    return ok ? y : proportionalY(zone);
+  };
+
   };
 
   return (
