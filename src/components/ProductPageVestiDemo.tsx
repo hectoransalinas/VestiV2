@@ -15,67 +15,81 @@ import type { GarmentCategory, Garment, Measurements } from "../motor/fitEngine"
 
 /** -------------------- Shoes helpers (demo) --------------------
  * El motor trabaja internamente con pieLargo (cm).
- * En demo permitimos ingresar talle en sistemas comunes y lo traducimos a cm aproximados.
- * NOTA: esto es una aproximación UX (no específica por marca/horma).
+ * En demo permitimos seleccionar talle por sistema (ARG / USA / EUR)
+ * y traducirlo a cm usando una tabla simple (referencia).
+ * El usuario SIEMPRE puede corregir el cm manualmente (eso manda).
  */
 type ShoeSystem = "ARG" | "EUR" | "USA";
 
-function normalizeShoeKey(raw: string): string | null {
-  const n = Number(String(raw).replace(",", "."));
-  if (!Number.isFinite(n) || n <= 0) return null;
-  // Evita problemas de float: 9.50 => "9.5"
-  const isInt = Math.abs(n - Math.round(n)) < 1e-9;
-  return isInt ? String(Math.round(n)) : String(n).replace(/\.0+$/, "");
+type ShoeEqRow = { arg: number; cm: number; usa: number; eur: number };
+
+const SHOE_EQ_TABLE: ShoeEqRow[] = [
+  { arg: 34, cm: 22.0, usa: 5.0, eur: 35.0 },
+  { arg: 35, cm: 22.5, usa: 5.5, eur: 35.5 },
+  { arg: 36, cm: 23.0, usa: 6.0, eur: 36.0 },
+  { arg: 37, cm: 24.0, usa: 7.0, eur: 37.0 },
+  { arg: 38, cm: 24.5, usa: 7.5, eur: 37.5 },
+  { arg: 39, cm: 25.0, usa: 8.0, eur: 38.0 },
+  { arg: 40, cm: 26.0, usa: 9.0, eur: 39.0 },
+  { arg: 41, cm: 26.5, usa: 9.5, eur: 39.5 },
+  { arg: 42, cm: 27.0, usa: 10.0, eur: 40.0 },
+  { arg: 43, cm: 28.0, usa: 11.0, eur: 41.0 },
+  { arg: 44, cm: 28.5, usa: 11.5, eur: 41.5 },
+];
+
+function normalizeNumber(raw: string): number | null {
+  const n = Number(String(raw ?? "").trim().replace(",", "."));
+  if (!Number.isFinite(n)) return null;
+  return n;
 }
 
-// Equivalencias de referencia (como tabla provista por el usuario).
-// Nota: esto es UI/Referencia. El motor SIEMPRE opera con 'pieLargo' (cm) ingresado por el usuario.
-const SHOE_EQ_CM: Record<ShoeSystem, Record<string, number>> = {
-  ARG: {
-    "34": 22,
-    "35": 22.5,
-    "36": 23,
-    "37": 24,
-    "38": 24.5,
-    "39": 25,
-    "40": 26,
-    "41": 26.5,
-    "42": 27,
-    "43": 28,
-    "44": 28.5,
-  },
-  USA: {
-    "5": 22,
-    "5.5": 22.5,
-    "6": 23,
-    "7": 24,
-    "7.5": 24.5,
-    "8": 25,
-    "9": 26,
-    "9.5": 26.5,
-    "10": 27,
-    "11": 28,
-    "11.5": 28.5,
-  },
-  EUR: {
-    "35": 22,
-    "35.5": 22.5,
-    "36": 23,
-    "37": 24,
-    "37.5": 24.5,
-    "38": 25,
-    "39": 26,
-    "39.5": 26.5,
-    "40": 27,
-    "41": 28,
-    "41.5": 28.5,
-  },
-};
-
 function shoeSizeToFootLengthCm(system: ShoeSystem, raw: string): number | null {
-  const key = normalizeShoeKey(raw);
-  if (!key) return null;
-  return SHOE_EQ_CM[system]?.[key] ?? null;
+  const n = normalizeNumber(raw);
+  if (n == null) return null;
+
+  // Match exact row when possible
+  const row =
+    system === "ARG"
+      ? SHOE_EQ_TABLE.find((r) => r.arg === Math.round(n))
+      : system === "EUR"
+      ? SHOE_EQ_TABLE.find((r) => r.eur === n)
+      : SHOE_EQ_TABLE.find((r) => r.usa === n);
+
+  if (row) return row.cm;
+
+  // Fallback: nearest by system value
+  const candidates = SHOE_EQ_TABLE.map((r) => {
+    const v = system === "ARG" ? r.arg : system === "EUR" ? r.eur : r.usa;
+    return { r, d: Math.abs(v - n) };
+  }).sort((a, b) => a.d - b.d);
+
+  return candidates[0]?.r.cm ?? null;
+}
+
+function argToSystemLabel(argLabel: string, system: ShoeSystem): string {
+  const n = normalizeNumber(argLabel);
+  if (n == null) return argLabel;
+
+  const row = SHOE_EQ_TABLE.find((r) => r.arg === Math.round(n));
+  if (!row) return argLabel;
+
+  const v = system === "ARG" ? row.arg : system === "EUR" ? row.eur : row.usa;
+  // Mostrar .5 cuando aplica, sin ceros extra
+  return Number.isInteger(v) ? String(v) : String(v).replace(".", ",");
+}
+
+function footToSystemSizeLabel(footCm: number, system: ShoeSystem): string | null {
+  if (!Number.isFinite(footCm) || footCm <= 0) return null;
+
+  // Elegimos el más cercano por cm (tabla de referencia)
+  const closest = SHOE_EQ_TABLE
+    .map((r) => ({ r, d: Math.abs(r.cm - footCm) }))
+    .sort((a, b) => a.d - b.d)[0]?.r;
+
+  if (!closest) return null;
+
+  const v = system === "ARG" ? closest.arg : system === "EUR" ? closest.eur : closest.usa;
+  return Number.isInteger(v) ? String(v) : String(v).replace(".", ",");
 }
 
 type DemoGarment = Garment & {
@@ -361,12 +375,9 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
   }, [fullProductFromParent?.category]);
 
 
-// Shoes (demo): sistema + talle -> pieLargo (cm) para alimentar el motor.
+// Shoes: selector de sistema (ARG / USA / EUR) para mostrar equivalencias.
 const [shoeSystem, setShoeSystem] = useState<ShoeSystem>("ARG");
-const [shoeSize, setShoeSize] = useState<string>("41");
 
-// NOTE: El sistema (ARG/USA/EUR) es solo referencia UX.
-// No debe modificar el input de 'Largo de pie (cm)'; ese valor es del usuario.
 
 
   const zonesAllowed = useMemo(
@@ -480,6 +491,8 @@ const [shoeSize, setShoeSize] = useState<string>("41");
       null,
     [garmentOptions, selectedSizeId]
   );
+
+
 
   const buildMensaje = (tag: string, cat: GarmentCategory): string => {
     const c = String(cat ?? "").toLowerCase();
@@ -662,12 +675,12 @@ const [shoeSize, setShoeSize] = useState<string>("41");
   // Render limpio tipo "guía de talles" (estilo Adidas/Nike).
   // =========================
   if (isSizeGuideMode) {
-    const talleActual = selectedGarment?.sizeLabel ?? "—";
+    const talleActualArg = selectedGarment?.sizeLabel ?? "—";
     const isShoes = String(effectiveCategory).toLowerCase() === "shoes";
-    const euFromFoot = mapFootToEuSize(Number((perfil as any).pieLargo ?? 0));
+    const suggestedArg = (lastRec?.tallaSugerida ?? talleActualArg) as any;
     const talleSugerido = isShoes
-      ? String(euFromFoot ?? talleActual)
-      : lastRec?.tallaSugerida ?? talleActual;
+      ? argToSystemLabel(String(suggestedArg), shoeSystem)
+      : String(suggestedArg);
 
     const mensaje = isShoes
       ? buildMensaje(String(lastRec?.tag ?? "OK"), effectiveCategory)
@@ -807,33 +820,64 @@ const [shoeSize, setShoeSize] = useState<string>("41");
       >
         {/* Selector de talle (talle actual) */}
         {garmentOptions.length > 1 && (
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-            {garmentOptions.map((g) => {
-              const active = String(g.id) === String(selectedSizeId);
-              return (
-                <button
-                  key={String(g.id)}
-                  type="button"
-                  onClick={() => setSelectedSizeId(String(g.id))}
-                  style={{
-                    minWidth: 38,
-                    padding: "6px 10px",
-                    borderRadius: 999,
-                    border: active ? "2px solid #111827" : "1px solid #d1d5db",
-                    background: active ? "#111827" : "#ffffff",
-                    color: active ? "#ffffff" : "#111827",
-                    fontWeight: 800,
-                    cursor: "pointer",
-                  }}
-                  aria-pressed={active}
-                  title={`Talle ${g.sizeLabel}`}
-                >
-                  {g.sizeLabel}
-                </button>
-              );
-            })}
-          </div>
-        )}
+  <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 10 }}>
+    {isShoes && (
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12, color: "#6b7280", fontWeight: 700 }}>Sistema</span>
+        <select
+          value={shoeSystem}
+          onChange={(e) => setShoeSystem(e.target.value as any)}
+          style={{
+            borderRadius: 999,
+            border: "1px solid #d1d5db",
+            padding: "6px 10px",
+            background: "#ffffff",
+            fontWeight: 800,
+            color: "#111827",
+            cursor: "pointer",
+          }}
+        >
+          <option value="ARG">ARG</option>
+          <option value="USA">USA</option>
+          <option value="EUR">EUR</option>
+        </select>
+      </div>
+    )}
+
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      {garmentOptions.map((g) => {
+        const active = String(g.id) === String(selectedSizeId);
+        const displayLabel = isShoes
+          ? argToSystemLabel(String(g.sizeLabel), shoeSystem)
+          : String(g.sizeLabel);
+
+        return (
+          <button
+            key={String(g.id)}
+            type="button"
+            onClick={() => {
+              setSelectedSizeId(String(g.id));
+            }}
+            style={{
+              minWidth: 38,
+              padding: "6px 10px",
+              borderRadius: 999,
+              border: active ? "2px solid #111827" : "1px solid #d1d5db",
+              background: active ? "#111827" : "#ffffff",
+              color: active ? "#ffffff" : "#111827",
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+            aria-pressed={active}
+            title={`Talle ${displayLabel}`}
+          >
+            {displayLabel}
+          </button>
+        );
+      })}
+    </div>
+  </div>
+)}
 
         <div
           style={{
@@ -1029,36 +1073,23 @@ const [shoeSize, setShoeSize] = useState<string>("41");
               )}
 
               {String(effectiveCategory).toLowerCase() === "shoes" && (
-                <div style={{ gridColumn: "1 / -1", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, minWidth: 0 }}>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, minWidth: 0 }}>
-                    <span style={{ color: "#6b7280" }}>Sistema</span>
-                    <select
-                      value={shoeSystem}
-                      onChange={(e) => setShoeSystem(e.target.value as any)}
-                      style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
-                    >
-                      <option value="ARG">ARG</option>
-                      <option value="EUR">EUR</option>
-                      <option value="USA">USA</option>
-                    </select>
-                  </label>
+  <>
+    <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, minWidth: 0, gridColumn: "1 / -1" }}>
+      <span style={{ color: "#6b7280" }}>Largo de pie (cm)</span>
+      <input
+        type="number"
+        step="0.1"
+        value={(perfil as any).pieLargo as any}
+        onChange={(e) => setPerfil((p) => ({ ...(p as any), pieLargo: Number(String(e.target.value).replace(",", ".")) } as any))}
+        style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
+      />
+    </label>
 
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, minWidth: 0 }}>
-                    <span style={{ color: "#6b7280" }}>Tu talle</span>
-                    <input
-                      type="number"
-                      value={shoeSize}
-                      onChange={(e) => setShoeSize(e.target.value)}
-                      style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
-                    />
-                  </label>
-
-                  <div style={{ gridColumn: "1 / -1", fontSize: 12, color: "#6b7280" }}>
-                    Largo estimado: <b style={{ color: "#111827" }}>{(perfil as any).pieLargo ? String((perfil as any).pieLargo).replace(".", ",") : "—"} cm</b>
-                    <span style={{ marginLeft: 8 }}>(aprox)</span>
-                  </div>
-                </div>
-              )}
+    <div style={{ gridColumn: "1 / -1", fontSize: 12, color: "#6b7280", lineHeight: 1.35 }}>
+      Tip: si no sabés tu cm exacto, elegí el sistema y el talle arriba para usarlo como referencia. Después podés ajustar este valor.
+    </div>
+  </>
+)}
             </div>
           )}
         </div>
