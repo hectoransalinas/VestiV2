@@ -6,11 +6,52 @@ import { VestiProductEmbed } from "../embed/VestiProductEmbed";
 import type { GarmentCategory, Garment, Measurements } from "../motor/fitEngine";
 
 /**
- * Demo de ficha de producto integrada con Vesti AI.
+ * Demo de ficha de producto integrada con Vesti.
  * - Usa el motor real de calce.
  * - Si viene producto real de Shopify, lo muestra y usa su descripción.
  * - Si no, cae al producto demo (Campera Puffer).
  */
+
+
+/** -------------------- Shoes helpers (demo) --------------------
+ * El motor trabaja internamente con pieLargo (cm).
+ * En demo permitimos ingresar talle en sistemas comunes y lo traducimos a cm aproximados.
+ * NOTA: esto es una aproximación UX (no específica por marca/horma).
+ */
+type ShoeSystem = "ARG" | "EUR" | "USA";
+
+function shoeSizeToFootLengthCm(system: ShoeSystem, raw: string): number | null {
+  const n = Number(String(raw).replace(",", "."));
+  if (!Number.isFinite(n) || n <= 0) return null;
+
+  // Tabla aproximada (adulto). Mantener simple y estable.
+  // Para demo: tratamos ARG ~= EUR (mismo rango 36–45).
+  if (system === "EUR" || system === "ARG") {
+    const eu = Math.round(n);
+    const table: Record<number, number> = {
+      36: 22.7,
+      37: 23.35,
+      38: 24.05,
+      39: 24.75,
+      40: 25.45,
+      41: 26.15,
+      42: 26.85,
+      43: 27.55,
+      44: 28.25,
+      45: 28.95,
+    };
+    return table[eu] ?? null;
+  }
+
+  // USA (aprox US Men). Si más adelante querés separar Women/Kids, se extiende.
+  if (system === "USA") {
+    // interpolación simple entre talles.
+    // 7 -> 25.0, 8 -> 26.0, 9 -> 27.0, 10 -> 28.0
+    return 18.0 + n; // 7 => 25, 9 => 27, etc.
+  }
+
+  return null;
+}
 
 type DemoGarment = Garment & {
   sizeLabel: string;
@@ -91,7 +132,7 @@ const DEMO_GARMENTS: DemoGarment[] = [
 
 const DEMO_PRODUCT = {
   name: "Campera Puffer Vesti·Fit",
-  subtitle: "Ajuste urbano, calce inteligente con Vesti AI",
+  subtitle: "Ajuste urbano, calce inteligente con Vesti",
   price: 82999,
   currency: "ARS",
   colorName: "Verde petróleo",
@@ -249,6 +290,7 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
     largoPierna: 102,
     pieLargo: 25.8,
   } as any));
+
   const [openMeasures, setOpenMeasures] = useState<boolean>(false);
 
 
@@ -292,6 +334,19 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
   const effectiveCategory: GarmentCategory = useMemo(() => {
     return normalizeCategoryUI(fullProductFromParent?.category ?? DEMO_CATEGORY);
   }, [fullProductFromParent?.category]);
+
+
+// Shoes (demo): sistema + talle -> pieLargo (cm) para alimentar el motor.
+const [shoeSystem, setShoeSystem] = useState<ShoeSystem>("ARG");
+const [shoeSize, setShoeSize] = useState<string>("41");
+
+useEffect(() => {
+  if (String(effectiveCategory).toLowerCase() !== "shoes") return;
+  const cm = shoeSizeToFootLengthCm(shoeSystem, shoeSize);
+  if (!cm) return;
+  setPerfil((p) => ({ ...(p as any), pieLargo: cm } as any));
+}, [shoeSystem, shoeSize, effectiveCategory]);
+
 
   const zonesAllowed = useMemo(
     () => allowedZonesForCategory(effectiveCategory),
@@ -676,7 +731,7 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
                 background: "#16a34a",
               }}
             />
-            <div style={{ fontWeight: 700, color: "#111827" }}>Vesti AI</div>
+            <div style={{ fontWeight: 700, color: "#111827" }}>Vesti</div>
             <div style={{ color: "#6b7280" }}>Guía de talles · Recomendación personalizada</div>
           </div>
 
@@ -953,15 +1008,35 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
               )}
 
               {String(effectiveCategory).toLowerCase() === "shoes" && (
-                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, gridColumn: "1 / -1", minWidth: 0 }}>
-                  <span style={{ color: "#6b7280" }}>Largo de pie (cm)</span>
-                  <input
-                    type="number"
-                    value={(perfil as any).pieLargo ?? ""}
-                    onChange={(e) => setPerfil((p) => ({ ...p, pieLargo: Number(e.target.value) } as any))}
-                    style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
-                  />
-                </label>
+                <div style={{ gridColumn: "1 / -1", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, minWidth: 0 }}>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, minWidth: 0 }}>
+                    <span style={{ color: "#6b7280" }}>Sistema</span>
+                    <select
+                      value={shoeSystem}
+                      onChange={(e) => setShoeSystem(e.target.value as any)}
+                      style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
+                    >
+                      <option value="ARG">ARG</option>
+                      <option value="EUR">EUR</option>
+                      <option value="USA">USA</option>
+                    </select>
+                  </label>
+
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, minWidth: 0 }}>
+                    <span style={{ color: "#6b7280" }}>Tu talle</span>
+                    <input
+                      type="number"
+                      value={shoeSize}
+                      onChange={(e) => setShoeSize(e.target.value)}
+                      style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
+                    />
+                  </label>
+
+                  <div style={{ gridColumn: "1 / -1", fontSize: 12, color: "#6b7280" }}>
+                    Largo estimado: <b style={{ color: "#111827" }}>{(perfil as any).pieLargo ? String((perfil as any).pieLargo).replace(".", ",") : "—"} cm</b>
+                    <span style={{ marginLeft: 8 }}>(aprox)</span>
+                  </div>
+                </div>
               )}
             </div>
           )}
@@ -1118,7 +1193,7 @@ return (
               background: "#22c55e",
             }}
           />
-          Probador inteligente · <strong>Vesti AI</strong>
+          Probador inteligente · <strong>Vesti</strong>
         </div>
       </div>
 
@@ -1272,7 +1347,7 @@ return (
                                 color: "#6b7280",
                               }}
                             >
-                              Tip: creá tu avatar con <strong>Vesti AI</strong> y validá si este
+                              Tip: creá tu avatar con <strong>Vesti</strong> y validá si este
                               talle es el ideal para vos.
                             </div>
                           </div>
@@ -1364,7 +1439,7 @@ return (
                 
           </>
         )}
-        {/* Columna derecha: Vesti AI */}
+        {/* Columna derecha: Vesti */}
         <div
           style={{
             flex: 1,
@@ -1383,7 +1458,7 @@ return (
                 marginBottom: 4,
               }}
             >
-              Probá tu talle con Vesti AI
+              Probá tu talle con Vesti
             </div>
             <div
               style={{
@@ -1507,7 +1582,7 @@ return (
               marginTop: 2,
             }}
           >
-            Vesti AI es una herramienta de recomendación. El calce final puede
+            Vesti es una herramienta de recomendación. El calce final puede
             variar según preferencias personales y marca.
           </div>
         </div>
