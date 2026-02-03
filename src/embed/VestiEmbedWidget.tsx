@@ -28,6 +28,8 @@ const defaultPerfil: Measurements = {
   cintura: 82,
   largoTorso: 52,
   largoPierna: 102,
+  pieLargo: 26,
+  cadera: 0,
 };
 
 // -------------------- Helpers de color y layout --------------------
@@ -93,6 +95,30 @@ function mapFootToEuSize(lenCm: number): number | null {
   if (lenCm < 27.9) return 43;
   if (lenCm < 28.6) return 44;
   return 45;
+}
+
+// Convertir talle (ARG/EUR/USA) a largo de pie aproximado (cm).
+// Nota: es una aproximación para UX; el motor de calce sigue operando por cm.
+function shoeSizeToFootLengthCm(args: {
+  system: "ARG" | "EUR" | "USA";
+  value: number;
+  gender: "M" | "F";
+}): number {
+  const v = args.value;
+  if (!Number.isFinite(v) || v <= 0) return 0;
+
+  // Base: aproximación lineal usando la escala EU (similar a lo que ya usamos en mapFootToEuSize)
+  const euToCm = (eu: number) => 22.3 + 0.7 * (eu - 35); // EU 36 ≈ 23.0cm
+
+  if (args.system === "EUR") return euToCm(v);
+
+  // En muchas tiendas AR se muestra equivalente a EU. Si tu tienda usa otra tabla,
+  // esto se puede ajustar por configuración.
+  if (args.system === "ARG") return euToCm(v);
+
+  // USA: aproximación por género (US M ≈ EU-33, US F ≈ EU-31)
+  const eu = args.gender === "M" ? v + 33 : v + 31;
+  return euToCm(eu);
 }
 
 // Fallback: heurística de calce de calzado en función del largo de pie.
@@ -371,6 +397,13 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
   }, [categoria]);
 
   const [footLength, setFootLength] = useState<number>(26);
+  const [shoeSizeSystem, setShoeSizeSystem] = useState<"ARG" | "EUR" | "USA">("ARG");
+  const [shoeSizeValue, setShoeSizeValue] = useState<number>(41);
+
+  // Mantener pieLargo del usuario sincronizado con la UI de shoes
+  useEffect(() => {
+    setUser((prev) => ({ ...prev, pieLargo: footLength } as any));
+  }, [footLength]);
 
   const [mannequinGender, setMannequinGender] = useState<"M" | "F">("M");
 
@@ -450,6 +483,21 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
     const val = Number(String(e.target.value).replace(",", "."));
     setFootLength(isNaN(val) ? 0 : val);
   };
+const handleShoeSystemChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const system = e.target.value as "ARG" | "EUR" | "USA";
+  setShoeSizeSystem(system);
+  const cm = shoeSizeToFootLengthCm({ system, value: shoeSizeValue, gender: mannequinGender });
+  setFootLength(cm);
+};
+
+const handleShoeSizeValueChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const val = Number(String(e.target.value).replace(",", "."));
+  const value = isNaN(val) ? 0 : val;
+  setShoeSizeValue(value);
+  const cm = shoeSizeToFootLengthCm({ system: shoeSizeSystem, value, gender: mannequinGender });
+  setFootLength(cm);
+};
+
 
   // UI recomendación (modo app/demo)
   const isOk = rec.tag === "OK";
@@ -754,16 +802,35 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
           )}
 
           {viewMode === "shoes" && (
-            <label style={{ display: "flex", flexDirection: "column", gap: 2, gridColumn: "1 / -1" }}>
-              <span style={{ fontSize: 11, color: "#6b7280" }}>Largo de pie (cm)</span>
-              <input
-                type="number"
-                value={Number.isFinite(footLength) ? footLength : ""}
-                onChange={handleFootChange}
-                style={{ borderRadius: 8, border: "1px solid #e5e7eb", padding: "6px 8px", fontSize: 12 }}
-              />
-            </label>
-          )}
+  <>
+    <label style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      <span style={{ fontSize: 11, color: "#6b7280" }}>Sistema de talle</span>
+      <select
+        value={shoeSizeSystem}
+        onChange={handleShoeSystemChange}
+        style={{ borderRadius: 8, border: "1px solid #e5e7eb", padding: "6px 8px", fontSize: 12, background: "white" }}
+      >
+        <option value="ARG">ARG</option>
+        <option value="EUR">EUR</option>
+        <option value="USA">USA</option>
+      </select>
+    </label>
+
+    <label style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      <span style={{ fontSize: 11, color: "#6b7280" }}>Talle habitual</span>
+      <input
+        type="number"
+        value={Number.isFinite(shoeSizeValue) ? shoeSizeValue : ""}
+        onChange={handleShoeSizeValueChange}
+        style={{ borderRadius: 8, border: "1px solid #e5e7eb", padding: "6px 8px", fontSize: 12 }}
+      />
+    </label>
+
+    <div style={{ gridColumn: "1 / -1", fontSize: 11, color: "#6b7280" }}>
+      Aproximación: largo de pie estimado <b>{Number.isFinite(footLength) ? footLength.toFixed(1) : "—"} cm</b>
+    </div>
+  </>
+)}
         </div>
       )}
     </div>
