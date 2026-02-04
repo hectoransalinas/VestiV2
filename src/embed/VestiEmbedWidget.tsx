@@ -26,8 +26,10 @@ const defaultPerfil: Measurements = {
   hombros: 44,
   pecho: 96,
   cintura: 82,
+  cadera: 98,
   largoTorso: 52,
   largoPierna: 102,
+  pieLargo: 26,
 };
 
 // -------------------- Helpers de color y layout --------------------
@@ -65,6 +67,7 @@ const widthTopPercent: Record<string, string> = {
   hombros: "18%",
   pecho: "29%",
   cintura: "43%",
+  cadera: "50%",
 };
 
 const lengthBarLayout: Record<string, { top: string; bottom: string }> = {
@@ -201,7 +204,13 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength, anchorA
   return (
     <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
       {widthZones.map((z) => {
-        const top = (isBottomView && z.zone === "cintura") ? "40%" : (widthTopPercent[z.zone] ?? "45%");
+        const top = isBottomView
+          ? z.zone === "cintura"
+            ? "40%"
+            : z.zone === "cadera"
+            ? "48%"
+            : "45%"
+          : (widthTopPercent[z.zone] ?? "45%");
         const color = zoneColor(z.status);
         return (
           <div
@@ -740,6 +749,15 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
                 </label>
               )}
               {viewMode === "bottom" && (
+                <label style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <span style={{ fontSize: 11, color: "#6b7280" }}>Cadera (cm)</span>
+                  <input
+                    type="number"
+                    value={Number.isFinite(user.cadera) ? user.cadera : ""}
+                    onChange={handleChange("cadera")}
+                    style={{ borderRadius: 8, border: "1px solid #e5e7eb", padding: "6px 8px", fontSize: 12 }}
+                  />
+                </label>
                 <label style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                   <span style={{ fontSize: 11, color: "#6b7280" }}>Largo pierna (cm)</span>
                   <input

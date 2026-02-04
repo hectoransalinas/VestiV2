@@ -153,27 +153,25 @@ type TolTable = Record<CanonCategory, Measurements>;
 
 const EASE_TABLE: EaseTable = {
 	  upper: {
-	    slim: { hombros: 0.5, pecho: 2, cintura: 2, largoTorso: 1, largoPierna: 0, pieLargo: 0 },
-	    regular: { hombros: 1, pecho: 4, cintura: 4, largoTorso: 1, largoPierna: 0, pieLargo: 0 },
-	    oversize: { hombros: 2, pecho: 8, cintura: 8, largoTorso: 1, largoPierna: 0, pieLargo: 0 },
+	    slim: { hombros: 0.5, pecho: 2, cintura: 2, cadera: 0, largoTorso: 1, largoPierna: 0, pieLargo: 0 },
+	    regular: { hombros: 1, pecho: 4, cintura: 4, cadera: 0, largoTorso: 1, largoPierna: 0, pieLargo: 0 },
+	    oversize: { hombros: 2, pecho: 8, cintura: 8, cadera: 0, largoTorso: 1, largoPierna: 0, pieLargo: 0 },
 	  },
   // En pants el ease aplicado a cintura se maneja con la misma tabla,
   // pero la regla final de talle es v1.0 por cintura.
-	  pants: {
-	    slim: { hombros: 0, pecho: 0, cintura: 1, largoTorso: 0, largoPierna: 0, pieLargo: 0 },
-	    regular: { hombros: 0, pecho: 0, cintura: 3, largoTorso: 0, largoPierna: 0, pieLargo: 0 },
-	    oversize: { hombros: 0, pecho: 0, cintura: 5, largoTorso: 0, largoPierna: 0, pieLargo: 0 },
+  pants: {slim: { hombros: 0, pecho: 0, cintura: 1, largoTorso: 0, largoPierna: 0, pieLargo: 0, cadera: 0},
+	    regular: { hombros: 0, pecho: 0, cintura: 3, cadera: 3, largoTorso: 0, largoPierna: 0, pieLargo: 0 },
+	    oversize: { hombros: 0, pecho: 0, cintura: 5, cadera: 5, largoTorso: 0, largoPierna: 0, pieLargo: 0 },
 	  },
   // shoes todavía no usa este motor (lo dejamos neutro para no romper)
-	  shoes: {
-	    slim: { hombros: 0, pecho: 0, cintura: 0, largoTorso: 0, largoPierna: 0, pieLargo: 0 },
-	    regular: { hombros: 0, pecho: 0, cintura: 0, largoTorso: 0, largoPierna: 0, pieLargo: 0 },
-	    oversize: { hombros: 0, pecho: 0, cintura: 0, largoTorso: 0, largoPierna: 0, pieLargo: 0 },
+  shoes: {slim: { hombros: 0, pecho: 0, cintura: 0, largoTorso: 0, largoPierna: 0, pieLargo: 0, cadera: 0},
+	    regular: { hombros: 0, pecho: 0, cintura: 0, cadera: 0, largoTorso: 0, largoPierna: 0, pieLargo: 0 },
+	    oversize: { hombros: 0, pecho: 0, cintura: 0, cadera: 0, largoTorso: 0, largoPierna: 0, pieLargo: 0 },
 	  },
 };
 
 const BASE_TOLERANCES: TolTable = {
-  upper: { hombros: 1, pecho: 2, cintura: 2, largoTorso: 2, largoPierna: 0, pieLargo: 0 },
+  upper: {hombros: 1, pecho: 2, cintura: 2, largoTorso: 2, largoPierna: 0, pieLargo: 0, cadera: 0},
   // pants: las tolerancias importantes las definimos en la regla v1.0
   pants: { hombros: 0, pecho: 0, cintura: 0, largoTorso: 0, largoPierna: 0, pieLargo: 0 },
   shoes: { hombros: 0, pecho: 0, cintura: 0, largoTorso: 0, largoPierna: 0, pieLargo: 0 },
@@ -198,6 +196,7 @@ export function computeFit(user: Measurements, garment: Garment): FitResult {
     hombros: safeNum(user.hombros),
     pecho: safeNum(user.pecho),
     cintura: safeNum(user.cintura),
+    cadera: safeNum((user as any).cadera),
     largoTorso: safeNum(user.largoTorso),
     largoPierna: safeNum(user.largoPierna),
     pieLargo: safeNum(user.pieLargo),
