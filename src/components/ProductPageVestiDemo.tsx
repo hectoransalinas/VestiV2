@@ -201,6 +201,7 @@ function normalizeZoneKey(z: any): string {
   if (s.includes("homb")) return "hombros";
   if (s.includes("pech")) return "pecho";
   if (s.includes("cint")) return "cintura";
+  if (s.includes("cad") || s.includes("hip")) return "cadera";
   if (s.includes("torso")) return "largoTorso";
   if (s.includes("pier")) return "largoPierna";
   if (s.includes("pie")) return "pieLargo";
@@ -216,7 +217,7 @@ function normalizeZoneKey(z: any): string {
 function allowedZonesForCategory(cat: GarmentCategory): Set<string> {
   const c = String(cat ?? "").toLowerCase();
 
-  if (c === "pants") return new Set(["cintura", "largoPierna"]);
+  if (c === "pants") return new Set(["cintura", "cadera", "largoPierna"]);
   if (c === "shoes") return new Set(["pieLargo"]);
   // upper/default
   return new Set(["hombros", "pecho", "cintura", "largoTorso"]);
@@ -942,6 +943,16 @@ hombros: Number(v.measures?.hombros ?? 0),
                       type="number"
                       value={perfil.cintura as any}
                       onChange={(e) => setPerfil((p) => ({ ...p, cintura: Number(e.target.value) } as any))}
+                      style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
+                    />
+                  </label>
+
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, minWidth: 0 }}>
+                    <span style={{ color: "#6b7280" }}>Cadera (cm)</span>
+                    <input
+                      type="number"
+                      value={(perfil as any).cadera as any}
+                      onChange={(e) => setPerfil((p) => ({ ...p, cadera: Number(e.target.value) } as any))}
                       style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
                     />
                   </label>

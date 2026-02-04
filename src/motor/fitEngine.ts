@@ -206,6 +206,7 @@ export function computeFit(user: Measurements, garment: Garment): FitResult {
     hombros: safeNum(garment.measures?.hombros),
     pecho: safeNum(garment.measures?.pecho),
     cintura: safeNum(garment.measures?.cintura),
+    cadera: safeNum((garment as any).measures?.cadera),
     largoTorso: safeNum(garment.measures?.largoTorso),
     largoPierna: safeNum(garment.measures?.largoPierna),
     pieLargo: safeNum(garment.measures?.pieLargo),
