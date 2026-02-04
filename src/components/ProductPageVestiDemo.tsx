@@ -26,7 +26,7 @@ const DEMO_GARMENTS: DemoGarment[] = [
     category: "remera",
     sizeLabel: "S",
     measures: {
-      hombros: 44,
+hombros: 44,
       pecho: 94,
       cintura: 86,
     cadera: 0,
@@ -44,9 +44,10 @@ const DEMO_GARMENTS: DemoGarment[] = [
     category: "remera",
     sizeLabel: "M",
     measures: {
-      hombros: 46,
+hombros: 46,
       pecho: 100,
       cintura: 92,
+      cadera: 0,
       largoTorso: 62,
       largoPierna: 0,
       pieLargo: 0,
@@ -61,9 +62,10 @@ const DEMO_GARMENTS: DemoGarment[] = [
     category: "remera",
     sizeLabel: "L",
     measures: {
-      hombros: 48,
+hombros: 48,
       pecho: 108,
       cintura: 100,
+      cadera: 0,
       largoTorso: 64,
       largoPierna: 0,
       pieLargo: 0,
@@ -78,9 +80,10 @@ const DEMO_GARMENTS: DemoGarment[] = [
     category: "remera",
     sizeLabel: "XL",
     measures: {
-      hombros: 50,
+hombros: 50,
       pecho: 116,
       cintura: 108,
+      cadera: 0,
       largoTorso: 66,
       largoPierna: 0,
       pieLargo: 0,
@@ -126,7 +129,7 @@ type FullProductFromParent = {
     id: number | string;
     sizeLabel: string; // ej: "S", "M", "Default Title"
     measures: {
-      hombros?: number;
+hombros?: number;
       pecho?: number;
       cintura?: number;
       largoTorso?: number;
@@ -246,6 +249,7 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
     hombros: 44,
     pecho: 96,
     cintura: 82,
+      cadera: 0,
     largoTorso: 52,
     largoPierna: 102,
     pieLargo: 25.8,
@@ -292,7 +296,7 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
   // 👉 Categoría efectiva que va al motor (normalizada)
   const effectiveCategory: GarmentCategory = useMemo(() => {
     return normalizeCategoryUI(fullProductFromParent?.category ?? DEMO_CATEGORY);
-  }, [fullProductFromParent?.category]);
+    }, [fullProductFromParent?.category]);
 
   const zonesAllowed = useMemo(
     () => allowedZonesForCategory(effectiveCategory),
@@ -364,13 +368,13 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
         category: String(fullProductFromParent?.category ?? DEMO_CATEGORY),
         sizeLabel: String(v.sizeLabel ?? "Default Title"),
         measures: {
-          hombros: Number(v.measures?.hombros ?? 0),
+hombros: Number(v.measures?.hombros ?? 0),
           pecho: Number(v.measures?.pecho ?? 0),
           cintura: Number(v.measures?.cintura ?? 0),
           largoTorso: Number(v.measures?.largoTorso ?? 0),
           largoPierna: Number(v.measures?.largoPierna ?? 0),
           pieLargo: Number(v.measures?.pieLargo ?? 0),
-        },
+    },
         stretchPct: Number(v.stretchPct ?? 0),
         easePreset: String(v.easePreset ?? "regular"),
       }));
@@ -941,7 +945,18 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
                       style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
                     />
                   </label>
+                
                   <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, minWidth: 0 }}>
+                    <span style={{ color: "#6b7280" }}>Cadera (cm)</span>
+                    <input
+                      type="number"
+                      value={(perfil as any).cadera as any}
+                      onChange={(e) => setPerfil((p) => ({ ...p, cadera: Number(e.target.value) } as any))}
+                      style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
+                    />
+                  </label>
+                
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, gridColumn: "1 / -1", minWidth: 0 }}>
                     <span style={{ color: "#6b7280" }}>Largo pierna (cm)</span>
                     <input
                       type="number"
