@@ -26,10 +26,10 @@ const defaultPerfil: Measurements = {
   hombros: 44,
   pecho: 96,
   cintura: 82,
-  cadera: 98,
+  cadera: 0,
   largoTorso: 52,
   largoPierna: 102,
-  pieLargo: 26,
+  pieLargo: 25.8,
 };
 
 // -------------------- Helpers de color y layout --------------------
@@ -204,13 +204,7 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength, anchorA
   return (
     <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
       {widthZones.map((z) => {
-        const top = isBottomView
-          ? z.zone === "cintura"
-            ? "40%"
-            : z.zone === "cadera"
-            ? "48%"
-            : "45%"
-          : (widthTopPercent[z.zone] ?? "45%");
+        const top = (isBottomView && z.zone === "cintura") ? "40%" : (widthTopPercent[z.zone] ?? "45%");
         const color = zoneColor(z.status);
         return (
           <div
@@ -754,8 +748,8 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
                     <span style={{ fontSize: 11, color: "#6b7280" }}>Cadera (cm)</span>
                     <input
                       type="number"
-                      value={Number.isFinite(user.cadera) ? user.cadera : ""}
-                      onChange={handleChange("cadera")}
+                      value={Number.isFinite((user as any).cadera) ? (user as any).cadera : ""}
+                      onChange={handleChange("cadera" as any)}
                       style={{ borderRadius: 8, border: "1px solid #e5e7eb", padding: "6px 8px", fontSize: 12 }}
                     />
                   </label>
