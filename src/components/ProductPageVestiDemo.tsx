@@ -26,7 +26,7 @@ const DEMO_GARMENTS: DemoGarment[] = [
     category: "remera",
     sizeLabel: "S",
     measures: {
-hombros: 44,
+          hombros: 44,
       pecho: 94,
       cintura: 86,
     cadera: 0,
@@ -44,7 +44,7 @@ hombros: 44,
     category: "remera",
     sizeLabel: "M",
     measures: {
-hombros: 46,
+          hombros: 46,
       pecho: 100,
       cintura: 92,
       cadera: 0,
@@ -62,7 +62,7 @@ hombros: 46,
     category: "remera",
     sizeLabel: "L",
     measures: {
-hombros: 48,
+          hombros: 48,
       pecho: 108,
       cintura: 100,
       cadera: 0,
@@ -80,7 +80,7 @@ hombros: 48,
     category: "remera",
     sizeLabel: "XL",
     measures: {
-hombros: 50,
+          hombros: 50,
       pecho: 116,
       cintura: 108,
       cadera: 0,
@@ -129,7 +129,7 @@ type FullProductFromParent = {
     id: number | string;
     sizeLabel: string; // ej: "S", "M", "Default Title"
     measures: {
-hombros?: number;
+          hombros?: number;
       pecho?: number;
       cintura?: number;
       largoTorso?: number;
@@ -368,10 +368,10 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
         category: String(fullProductFromParent?.category ?? DEMO_CATEGORY),
         sizeLabel: String(v.sizeLabel ?? "Default Title"),
         measures: {
-hombros: Number(v.measures?.hombros ?? 0),
+          hombros: Number(v.measures?.hombros ?? 0),
           pecho: Number(v.measures?.pecho ?? 0),
           cintura: Number(v.measures?.cintura ?? 0),
-          cadera: Number(v.measures?.cadera ?? 0),
+                    cadera: Number(v.measures?.cadera ?? 0),
           largoTorso: Number(v.measures?.largoTorso ?? 0),
           largoPierna: Number(v.measures?.largoPierna ?? 0),
           pieLargo: Number(v.measures?.pieLargo ?? 0),
@@ -581,7 +581,7 @@ hombros: Number(v.measures?.hombros ?? 0),
 
   const vestiIntroZonesText = useMemo(() => {
     const c = String(effectiveCategory).toLowerCase();
-    if (c === "pants") return "cintura, cadera y largo de pierna";
+    if (c === "pants") return "cintura y largo de pierna";
     if (c === "shoes") return "largo de pie";
     return "hombros, pecho, cintura y largo";
   }, [effectiveCategory]);
