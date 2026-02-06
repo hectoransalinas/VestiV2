@@ -371,6 +371,7 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
 hombros: Number(v.measures?.hombros ?? 0),
           pecho: Number(v.measures?.pecho ?? 0),
           cintura: Number(v.measures?.cintura ?? 0),
+          cadera: Number(v.measures?.cadera ?? 0),
           largoTorso: Number(v.measures?.largoTorso ?? 0),
           largoPierna: Number(v.measures?.largoPierna ?? 0),
           pieLargo: Number(v.measures?.pieLargo ?? 0),
@@ -580,7 +581,7 @@ hombros: Number(v.measures?.hombros ?? 0),
 
   const vestiIntroZonesText = useMemo(() => {
     const c = String(effectiveCategory).toLowerCase();
-    if (c === "pants") return "cintura y largo de pierna";
+    if (c === "pants") return "cintura, cadera y largo de pierna";
     if (c === "shoes") return "largo de pie";
     return "hombros, pecho, cintura y largo";
   }, [effectiveCategory]);
