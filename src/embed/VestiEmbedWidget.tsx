@@ -67,8 +67,7 @@ const widthTopPercent: Record<string, string> = {
   hombros: "18%",
   pecho: "29%",
   cintura: "43%",
-  // Pants: cadera un poco más abajo que cintura
-  cadera: "52%",
+  cadera: "51%",
 };
 
 const lengthBarLayout: Record<string, { top: string; bottom: string }> = {
@@ -82,9 +81,6 @@ type OverlayProps = {
   fit: FitResult;
   viewMode: ViewMode;
   footLength: number;
-  // Cadera en pants es informativa (no decide talle). El motor puede no devolverla,
-  // así que permitimos inyectarla desde UI.
-  hipOverlay?: { zone: "cadera"; status: "Perfecto" | "Ajustado" | "Holgado"; delta: number } | null;
 };
 
 // Mapear largo de pie en cm -> talle EU aproximado (36–45)
@@ -195,7 +191,34 @@ function normalizeFitForUi(fit: any): any {
   return fit;
 }
 
-const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength, hipOverlay }) => {
+
+function computeHipZoneForUi(user: any, prenda: any): { zone: string; status: string } | null {
+  const userHip = Number(user?.cadera ?? 0);
+  const garmentHip = Number(prenda?.measures?.cadera ?? prenda?.measures?.hip ?? 0);
+  if (!Number.isFinite(userHip) || userHip <= 0) return null;
+  if (!Number.isFinite(garmentHip) || garmentHip <= 0) return null;
+
+  const stretchPct = Number(prenda?.stretchPct ?? 0);
+  const easePreset = String(prenda?.easePreset ?? "regular").toLowerCase();
+
+  // Ajuste simple por "ease" (informativo, NO debe cambiar talle)
+  const easeCm =
+    easePreset === "slim" ? -2 :
+    easePreset === "oversize" ? 2 :
+    0;
+
+  const stretchCm = garmentHip * (Number.isFinite(stretchPct) ? stretchPct : 0) / 100;
+  const effectiveGarmentHip = garmentHip + stretchCm + easeCm;
+
+  const delta = effectiveGarmentHip - userHip; // positivo = holgura disponible
+
+  // Umbrales suaves (informativos)
+  if (delta < -1) return { zone: "cadera", status: "Ajustado" };
+  if (delta > 6) return { zone: "cadera", status: "Holgado" };
+  return { zone: "cadera", status: "Perfecto" };
+}
+
+const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength, anchorApi }) => {
   if (!fit && viewMode !== "shoes") return null;
 
   const isTopView = viewMode === "top";
@@ -207,12 +230,6 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength, hipOver
     if (isBottomView) return z.zone === "cintura" || z.zone === "cadera";
     return z.zone === "hombros" || z.zone === "pecho" || z.zone === "cintura";
   });
-
-  // Si estamos en pants (bottom) y el motor no devolvió cadera, la inyectamos desde UI.
-  if (isBottomView && hipOverlay) {
-    const hasHip = widthZones.some((z: any) => z.zone === "cadera");
-    if (!hasHip) widthZones.push(hipOverlay as any);
-  }
 
   const rawLengths = fit?.lengths ?? [];
   let lengthZones: typeof rawLengths = [];
@@ -238,12 +255,7 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength, hipOver
   return (
     <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
       {widthZones.map((z) => {
-        const top =
-          isBottomView && z.zone === "cintura"
-            ? "40%"
-            : isBottomView && z.zone === "cadera"
-            ? "52%"
-            : (widthTopPercent[z.zone] ?? "45%");
+        const top = (isBottomView && z.zone === "cintura") ? "40%" : (isBottomView && z.zone === "cadera") ? "52%" : (widthTopPercent[z.zone] ?? "45%");
         const color = zoneColor(z.status);
         return (
           <div
@@ -385,6 +397,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
   onRecomendacion,
 }) => {
   const [user, setUser] = useState<Measurements>(perfilInicial ?? defaultPerfil);
+  useEffect(() => { console.log("%c[VESTI] VESTI_BUILD_HIP_V2", "color:#22c55e;font-weight:bold"); }, []);
 
   const isSizeGuideMode = useMemo(() => {
     try {
@@ -423,17 +436,35 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
 
   const [mannequinGender, setMannequinGender] = useState<"M" | "F">("M");
 
-  const fit = useMemo(() => computeFit(user, prenda), [user, prenda]);
-  const fitUi = useMemo(() => normalizeFitForUi(fit), [fit]);
+const fit = useMemo(() => computeFit(user, prenda), [user, prenda]);
+const fitUiBase = useMemo(() => normalizeFitForUi(fit), [fit]);
+
+// Inyectar CADERA como zona informativa SOLO para UI (chips/overlay). No afecta recomendación.
+const fitUiForUi = useMemo(() => {
+  const baseFit: any = fitUiBase;
+  if (!baseFit) return baseFit;
+  if (viewMode !== "bottom") return baseFit;
+
+  const hipZone = computeHipZoneForUi(user, prenda);
+  if (!hipZone) return baseFit;
+
+  const widths = Array.isArray(baseFit.widths) ? [...baseFit.widths] : [];
+  const idx = widths.findIndex((z: any) => z?.zone === "cadera");
+  if (idx >= 0) widths[idx] = { ...widths[idx], status: hipZone.status };
+  else widths.push({ zone: "cadera", status: hipZone.status });
+
+  return { ...baseFit, widths };
+}, [fitUiBase, user, prenda, viewMode]);
+
 
   const rec = useMemo(
     () =>
       makeRecommendation({
         category: categoria,
         garment: prenda,
-        fit: fitUi,
+        fit: fitUiBase,
       }),
-    [categoria, prenda, fitUi]
+    [categoria, prenda, fitUiBase]
   );
 
   // Auto-ajuste de alto cuando se usa dentro de un iframe embebido
@@ -589,44 +620,6 @@ const handleShoeSizeValueChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       : shoeChip?.statusKey === "Ajustado"
       ? chipBorderColor("Ajustado")
       : chipBorderColor("Grande");
-// =========================
-// Pants: Cadera informativa (no decide talle)
-// El motor puede NO devolver cadera en widths, pero igual queremos chip + overlay.
-// =========================
-const hipOverlay = useMemo(() => {
-  if (viewMode !== "bottom") return null;
-
-  const userHip = Number((user as any)?.cadera ?? 0);
-  const garmentHip = Number((prenda as any)?.measures?.cadera ?? 0);
-  if (!(userHip > 0 && garmentHip > 0)) return null;
-
-  const presetRaw = String((prenda as any)?.easePreset ?? "regular").toLowerCase();
-  const preset =
-    presetRaw === "slim" || presetRaw === "regular" || presetRaw === "oversize"
-      ? (presetRaw as "slim" | "regular" | "oversize")
-      : "regular";
-
-  const stretchPct = Number((prenda as any)?.stretchPct ?? 0);
-  const stretch = Number.isFinite(stretchPct) ? stretchPct / 100 : 0;
-
-  const effectiveHip = garmentHip * (1 + stretch);
-  const delta = effectiveHip - userHip; // + holgura, - ajustado
-
-  // Umbrales UX (informativos)
-  const tightWarn = preset === "slim" ? 3 : preset === "oversize" ? 4 : 2;
-  const looseTh = preset === "slim" ? 7 : preset === "oversize" ? 10 : 6;
-
-  const status: "Perfecto" | "Ajustado" | "Holgado" =
-    delta < tightWarn ? "Ajustado" : delta > looseTh ? "Holgado" : "Perfecto";
-
-  return { zone: "cadera" as const, status, delta };
-}, [viewMode, user, prenda]);
-
-// Inyectar cadera también en chips del modo demo (si el motor no la trajo)
-if (viewMode === "bottom" && hipOverlay) {
-  const hasHip = (widthBadges as any[]).some((z: any) => z.zone === "cadera");
-  if (!hasHip) (widthBadges as any[]).push(hipOverlay as any);
-}
 
   return (
     <div
@@ -737,7 +730,7 @@ if (viewMode === "bottom" && hipOverlay) {
         </div>
 
         <MannequinViewer variant={mannequinGender} />
-        <FitOverlay fit={fitUi} viewMode={viewMode} footLength={footLength} hipOverlay={hipOverlay} />
+        <FitOverlay fit={fitUiForUi} viewMode={viewMode} footLength={footLength} />
       </div>
 
       {/* Recomendación (solo modo app/demo) */}
