@@ -702,11 +702,29 @@ const [shoeSystem, setShoeSystem] = useState<ShoeSystem>("ARG");
       if (hasCadera) return chipsBase;
 
       const userHip = Number((perfil as any)?.cadera ?? 0);
-      const garmentHip = Number((selectedGarment as any)?.measures?.cadera ?? 0);
+const garmentHip = Number((selectedGarment as any)?.measures?.cadera ?? 0);
 
-      // Si hay datos válidos, el motor debería devolver estado; si no, placeholder.
-      const placeholder = userHip > 0 && garmentHip > 0 ? "cadera: Perfecto" : "cadera: —";
-      return [...chipsBase, placeholder];
+if (userHip > 0 && garmentHip > 0) {
+  const presetRaw = String((selectedGarment as any)?.easePreset ?? "regular").toLowerCase();
+  const preset =
+    presetRaw === "slim" || presetRaw === "regular" || presetRaw === "oversize"
+      ? (presetRaw as "slim" | "regular" | "oversize")
+      : "regular";
+
+  const stretchPct = Number((selectedGarment as any)?.stretchPct ?? 0);
+  const stretch = Number.isFinite(stretchPct) ? stretchPct / 100 : 0;
+
+  const effectiveHip = garmentHip * (1 + stretch);
+  const delta = effectiveHip - userHip; // + holgura, - ajustado
+
+  const tightWarn = preset === "slim" ? 3 : preset === "oversize" ? 4 : 2;
+  const looseTh = preset === "slim" ? 7 : preset === "oversize" ? 10 : 6;
+
+  const status = delta < tightWarn ? "Ajustado" : delta > looseTh ? "Holgado" : "Perfecto";
+  return [...chipsBase, `cadera: ${status}`];
+}
+
+return [...chipsBase, "cadera: —"];
     }, [chipsBase, effectiveCategory, perfil, selectedGarment]);
 
     // Advertencia fuerte de Cadera (informativa). No cambia talle recomendado.
