@@ -44,10 +44,10 @@ export type Measurements = {
   hombros: number;
   pecho: number;
   cintura: number;
-  cadera: number;
   largoTorso: number;
   largoPierna: number;
-  pieLargo: number;
+  pieLargo: number;  cadera?: number;
+
 };
 
 export type EasePreset = "slim" | "regular" | "oversize";
@@ -198,54 +198,35 @@ export function computeFit(user: Measurements, garment: Garment): FitResult {
     hombros: safeNum(user.hombros),
     pecho: safeNum(user.pecho),
     cintura: safeNum(user.cintura),
-    cadera: safeNum(user.cadera),
     largoTorso: safeNum(user.largoTorso),
     largoPierna: safeNum(user.largoPierna),
     pieLargo: safeNum(user.pieLargo),
+    cadera: safeNum((user as any).cadera),
   };
 
   const g: Measurements = {
     hombros: safeNum(garment.measures?.hombros),
     pecho: safeNum(garment.measures?.pecho),
     cintura: safeNum(garment.measures?.cintura),
-    cadera: safeNum(garment.measures?.cadera),
     largoTorso: safeNum(garment.measures?.largoTorso),
     largoPierna: safeNum(garment.measures?.largoPierna),
     pieLargo: safeNum(garment.measures?.pieLargo),
+    cadera: safeNum((garment.measures as any)?.cadera),
   };
 
-  // ---------- PANTS v1.1 (cintura + cadera opcional) ----------
+  // ---------- PANTS v1.0 ----------
   if (cat === "pants") {
-    // Elasticidad (stretch) afecta anchos
-    const stretchFactor = 1 + stretch;
-
     // Cintura efectiva por elasticidad
-    const effectiveWaist = g.cintura * stretchFactor;
+    const effectiveWaist = g.cintura * (1 + stretch);
     const deltaWaist = effectiveWaist - u.cintura; // + holgura, - ajustado
 
     // Para pantalón el "ease" define cuánta holgura todavía consideramos "Perfecto".
-    const perfectMaxWaist = (EASE_TABLE.pants[preset]?.cintura ?? 3) as number;
+    // - slim: tolera menos holgura
+    // - oversize: tolera más holgura
+    const perfectMax = (EASE_TABLE.pants[preset]?.cintura ?? 3) as number;
     // Perfecto: 0..perfectMax, Holgado: >perfectMax, Ajustado: <0
     const cinturaStatus: FitWidth =
-      deltaWaist < 0 ? "Ajustado" : deltaWaist <= perfectMaxWaist ? "Perfecto" : "Holgado";
-
-    // Cadera (opcional): solo si tenemos ambos datos (>0)
-    let caderaStatus: FitWidth | null = null;
-    let effectiveHip = 0;
-    let deltaHip = 0;
-
-    if (g.cadera > 0 && u.cadera > 0) {
-      effectiveHip = g.cadera * stretchFactor;
-      deltaHip = effectiveHip - u.cadera;
-      const perfectMaxHip = (EASE_TABLE.pants[preset]?.cadera ?? perfectMaxWaist) as number;
-      caderaStatus =
-        deltaHip < 0 ? "Ajustado" : deltaHip <= perfectMaxHip ? "Perfecto" : "Holgado";
-    }
-
-    // Overall: el "peor" de los anchos (Ajustado > Holgado > Perfecto)
-    const rank = (s: FitWidth) => (s === "Ajustado" ? 3 : s === "Holgado" ? 2 : 1);
-    let overall: FitWidth = cinturaStatus;
-    if (caderaStatus && rank(caderaStatus) > rank(overall)) overall = caderaStatus;
+      deltaWaist < 0 ? "Ajustado" : deltaWaist <= perfectMax ? "Perfecto" : "Holgado";
 
     // Largo pierna: Perfecto ±2
     // Si falta dato (0), no forzamos alerta (evita bug de quedar siempre "Largo")
@@ -261,35 +242,50 @@ export function computeFit(user: Measurements, garment: Garment): FitResult {
       largoStatus = "Perfecto";
     }
 
-    const widths: FitResult["widths"] = [
-      { zone: "cintura", status: cinturaStatus, delta: round2(deltaWaist) },
-    ];
-    if (caderaStatus) {
-      widths.push({ zone: "cadera", status: caderaStatus, delta: round2(deltaHip) });
-    }
+// Cadera (opcional): solo si hay datos válidos
+const hasHip = (g.cadera ?? 0) > 0 && (u.cadera ?? 0) > 0;
+const effectiveHip = hasHip ? (g.cadera as number) * (1 + stretch) : 0;
+const deltaHip = hasHip ? effectiveHip - (u.cadera as number) : 0;
 
-    return {
-      category: cat,
-      overall,
-      widths,
-      lengths: [{ zone: "largoPierna", status: largoStatus, delta: round2(deltaLen) }],
-      debug: {
-        catRaw: garment.category,
-        cat,
-        preset,
-        stretchPct: garment.stretchPct,
-        stretchFactor,
-        effectiveWaist,
-        deltaWaist,
-        effectiveHip,
-        deltaHip,
-        deltaLen,
-        uCadera: u.cadera,
-        gCadera: g.cadera,
-        uLargoPierna: u.largoPierna,
-        gLargoPierna: g.largoPierna,
-      },
-    };
+// Umbrales acordados:
+// - Perfecto: 0..2cm de holgura
+// - Holgado: >2cm
+// - Ajustado: <0cm (prenda más chica que el cuerpo)
+const hipPerfectMax = 2;
+const caderaStatus: FitWidth = !hasHip
+  ? "Perfecto"
+  : deltaHip < 0
+  ? "Ajustado"
+  : deltaHip <= hipPerfectMax
+  ? "Perfecto"
+  : "Holgado";
+
+const widthsOut: ZoneFitWidth[] = [
+  { zone: "cintura", status: cinturaStatus, delta: round2(deltaWaist) },
+  ...(hasHip ? [{ zone: "cadera" as const, status: caderaStatus, delta: round2(deltaHip) }] : []),
+];
+
+return {
+  category: cat,
+  overall: cinturaStatus,
+  widths: widthsOut,
+  lengths: [{ zone: "largoPierna", status: largoStatus, delta: round2(deltaLen) }],
+  debug: {
+    catRaw: garment.category,
+    cat,
+    preset,
+    stretchPct: garment.stretchPct,
+    effectiveWaist,
+    deltaWaist,
+    hasHip,
+    effectiveHip,
+    deltaHip,
+    deltaLen,
+    uLargoPierna: u.largoPierna,
+    gLargoPierna: g.largoPierna,
+  },
+};
+
   }
 
   // ---------- SHOES v1.0 (solo largo de pie) ----------
@@ -402,9 +398,15 @@ export function makeRecommendation(params: {
   if (cat === "pants") {
     const cintura = fit.widths.find((w) => w.zone === "cintura");
     const largo = fit.lengths.find((l) => l.zone === "largoPierna");
+    const cadera = fit.widths.find((w) => w.zone === "cadera");
 
     const cinturaStatus: FitWidth = cintura?.status ?? "Perfecto";
     const largoStatus: FitLength = largo?.status ?? "Perfecto";
+    const hasHip = !!cadera;
+    const caderaStatus: FitWidth = cadera?.status ?? "Perfecto";
+    const caderaDelta: number = typeof cadera?.delta === "number" ? cadera.delta : 0;
+    // Cadera crítica: prenda queda >5cm más chica que el cuerpo
+    const hipCritical = hasHip && caderaDelta < -5;
 
     // Tag principal por cintura
     let tag: RecommendationTag = "OK";
@@ -413,6 +415,9 @@ export function makeRecommendation(params: {
 
     // CHECK_LENGTH solo si talle OK (acordado)
     if (tag === "OK" && largoStatus !== "Perfecto") tag = "CHECK_LENGTH";
+
+    // Si la cadera es crítica, priorizamos subir talle aunque la cintura esté OK.
+    if (hipCritical) tag = "SIZE_UP";
 
     // Mensajes por caso (sin pecho/hombros)
     const sizeLabel = ` ${cleanSizeLabel(garment.sizeLabel)}`;
@@ -423,6 +428,13 @@ export function makeRecommendation(params: {
         : cinturaStatus === "Ajustado"
         ? "La cintura se ve ajustada para tus medidas."
         : "La cintura se ve holgada para tus medidas.";
+
+    const caderaLine = !hasHip ? "" :
+      caderaStatus === "Perfecto"
+        ? ""
+        : caderaStatus === "Ajustado"
+        ? "Revisá la cadera: podría quedarte ajustado."
+        : "Revisá la cadera: podría quedarte holgado.";
 
     const largoLine =
       largoStatus === "Perfecto"
@@ -438,7 +450,7 @@ export function makeRecommendation(params: {
         message:
           `Este talle${sizeLabel} podría quedarte ajustado en la cintura. ` +
           "Probá compararlo con un talle más. " +
-          (largoLine ? ` ${largoLine}` : ""),
+          ((caderaLine ? ` ${caderaLine}` : "") + ((caderaLine ? ` ${caderaLine}` : "") + (largoLine ? ` ${largoLine}` : ""))),
       };
     }
 
@@ -449,7 +461,7 @@ export function makeRecommendation(params: {
         message:
           `Este talle${sizeLabel} se ve holgado en la cintura. ` +
           "Si preferís un calce más al cuerpo, compará con un talle menos. " +
-          (largoLine ? ` ${largoLine}` : ""),
+          ((caderaLine ? ` ${caderaLine}` : "") + ((caderaLine ? ` ${caderaLine}` : "") + (largoLine ? ` ${largoLine}` : ""))),
       };
     }
 
@@ -459,7 +471,7 @@ export function makeRecommendation(params: {
         title: "Revisá el largo antes de comprar",
         message:
           `En cintura, este talle${sizeLabel} se ve bien. ` +
-          (largoLine || "Revisá el largo para confirmar cómo te gusta que caiga."),
+          ((caderaLine ? `${caderaLine} ` : "") + (largoLine || "Revisá el largo para confirmar cómo te gusta que caiga.")),
       };
     }
 
@@ -469,7 +481,7 @@ export function makeRecommendation(params: {
       title: "Este talle parece adecuado para vos",
       message:
         `En cintura, este talle${sizeLabel} se ve bien para tus medidas. ` +
-        (largoLine ? ` ${largoLine}` : ""),
+        ((caderaLine ? ` ${caderaLine}` : "") + ((caderaLine ? ` ${caderaLine}` : "") + (largoLine ? ` ${largoLine}` : ""))),
     };
   }
 

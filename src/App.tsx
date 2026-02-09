@@ -27,16 +27,8 @@ type FullProductFromParent = {
       hombros?: number;
       pecho?: number;
       cintura?: number;
-      cadera?: number;
-      hip?: number;
-      hips?: number;
-      largo_pierna?: number;
-      largoPierna?: number;
       largo_torso?: number;
       largoTorso?: number;
-      pie_largo?: number;
-      pieLargo?: number;
-      largo_pie?: number;
       stretch?: number;
       ease?: string;
     };
