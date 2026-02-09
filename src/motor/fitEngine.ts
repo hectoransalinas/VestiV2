@@ -247,11 +247,12 @@ const hasHip = (g.cadera ?? 0) > 0 && (u.cadera ?? 0) > 0;
 const effectiveHip = hasHip ? (g.cadera as number) * (1 + stretch) : 0;
 const deltaHip = hasHip ? effectiveHip - (u.cadera as number) : 0;
 
-// Umbrales acordados:
-// - Perfecto: 0..2cm de holgura
-// - Holgado: >2cm
+// Umbrales acordados (cadera informativa):
+// - regular/oversize: Perfecto 0..2cm de holgura
+// - slim: Perfecto 0..3cm de holgura (más estricto)
+// - Holgado: >perfectMax
 // - Ajustado: <0cm (prenda más chica que el cuerpo)
-const hipPerfectMax = 2;
+const hipPerfectMax = preset === "slim" ? 3 : 2;
 const caderaStatus: FitWidth = !hasHip
   ? "Perfecto"
   : deltaHip < 0

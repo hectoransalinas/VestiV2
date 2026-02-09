@@ -788,15 +788,27 @@ const handleShoeSizeValueChange = (e: React.ChangeEvent<HTMLInputElement>) => {
                 </label>
               )}
               {viewMode === "bottom" && (
-                <label style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                  <span style={{ fontSize: 11, color: "#6b7280" }}>Largo pierna (cm)</span>
-                  <input
-                    type="number"
-                    value={Number.isFinite(user.largoPierna) ? user.largoPierna : ""}
-                    onChange={handleChange("largoPierna")}
-                    style={{ borderRadius: 8, border: "1px solid #e5e7eb", padding: "6px 8px", fontSize: 12 }}
-                  />
-                </label>
+                <>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                    <span style={{ fontSize: 11, color: "#6b7280" }}>Cadera (cm)</span>
+                    <input
+                      type="number"
+                      value={Number.isFinite(user.cadera) ? user.cadera : ""}
+                      onChange={handleChange("cadera")}
+                      style={{ borderRadius: 8, border: "1px solid #e5e7eb", padding: "6px 8px", fontSize: 12 }}
+                    />
+                  </label>
+
+                  <label style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                    <span style={{ fontSize: 11, color: "#6b7280" }}>Largo pierna (cm)</span>
+                    <input
+                      type="number"
+                      value={Number.isFinite(user.largoPierna) ? user.largoPierna : ""}
+                      onChange={handleChange("largoPierna")}
+                      style={{ borderRadius: 8, border: "1px solid #e5e7eb", padding: "6px 8px", fontSize: 12 }}
+                    />
+                  </label>
+                </>
               )}
             </>
           )}

@@ -292,7 +292,7 @@ function normalizeZoneKey(z: any): string {
 function allowedZonesForCategory(cat: GarmentCategory): Set<string> {
   const c = String(cat ?? "").toLowerCase();
 
-  if (c === "pants") return new Set(["cintura", "largoPierna"]);
+  if (c === "pants") return new Set(["cintura", "cadera", "largoPierna"]);
   if (c === "shoes") return new Set(["pieLargo"]);
   // upper/default
   return new Set(["hombros", "pecho", "cintura", "largoTorso"]);
@@ -688,9 +688,57 @@ const [shoeSystem, setShoeSystem] = useState<ShoeSystem>("ARG");
 
     const resumen = lastRec?.resumenZonas ?? "";
 
-    const chips = resumen
-      ? resumen.split(" · ").filter(Boolean)
-      : [];
+    const chipsBase = resumen ? resumen.split(" · ").filter(Boolean) : [];
+
+    // En Pants mostramos "cadera" siempre (aunque aún no haya datos suficientes)
+    const chips = useMemo(() => {
+      const isPants = String(effectiveCategory).toLowerCase() === "pants";
+      if (!isPants) return chipsBase;
+
+      const hasCadera = chipsBase.some((c) =>
+        String(c).toLowerCase().trim().startsWith("cadera")
+      );
+      if (hasCadera) return chipsBase;
+
+      const userHip = Number((perfil as any)?.cadera ?? 0);
+      const garmentHip = Number((selectedGarment as any)?.measures?.cadera ?? 0);
+
+      // Si hay datos válidos, el motor ya debería devolver el estado; si no, mostramos placeholder.
+      const placeholder = userHip > 0 && garmentHip > 0 ? "cadera: Perfecto" : "cadera: —";
+      return [...chipsBase, placeholder];
+    }, [chipsBase, effectiveCategory, perfil, selectedGarment]);
+
+    // Advertencia fuerte de Cadera (informativa). No cambia talle recomendado.
+    const hipAlert = useMemo(() => {
+      const isPants = String(effectiveCategory).toLowerCase() === "pants";
+      if (!isPants) return null;
+
+      const userHip = Number((perfil as any)?.cadera ?? 0);
+      const garmentHip = Number((selectedGarment as any)?.measures?.cadera ?? 0);
+      if (!(userHip > 0 && garmentHip > 0)) return null;
+
+      const presetRaw = String((selectedGarment as any)?.easePreset ?? "regular").toLowerCase();
+      const preset =
+        presetRaw === "slim" || presetRaw === "regular" || presetRaw === "oversize"
+          ? presetRaw
+          : "regular";
+
+      const stretchPct = Number((selectedGarment as any)?.stretchPct ?? 0);
+      const stretch = Number.isFinite(stretchPct) ? stretchPct / 100 : 0;
+
+      const effectiveHip = garmentHip * (1 + stretch);
+      const delta = effectiveHip - userHip; // + holgura, - ajustado
+
+      // Umbrales acordados:
+      // regular/oversize: warning <2, danger <0
+      // slim: warning <3, danger <1
+      const warnTh = preset === "slim" ? 3 : 2;
+      const dangerTh = preset === "slim" ? 1 : 0;
+
+      if (delta < dangerTh) return { level: "danger" as const, delta, preset };
+      if (delta < warnTh) return { level: "warning" as const, delta, preset };
+      return null;
+    }, [effectiveCategory, perfil, selectedGarment]);
 
     const chipTone = (statusRaw: string) => {
       const s = String(statusRaw || "").trim();
@@ -935,6 +983,43 @@ const [shoeSystem, setShoeSystem] = useState<ShoeSystem>("ARG");
               <div style={{ color: "#6b7280", fontSize: 13 }}>
                 Basado en tus medidas y este producto
               </div>
+
+              {hipAlert && (
+                <div
+                  style={{
+                    marginTop: 10,
+                    padding: "10px 12px",
+                    borderRadius: 12,
+                    border:
+                      hipAlert.level === "danger"
+                        ? "1px solid rgba(239, 68, 68, 0.35)"
+                        : "1px solid rgba(245, 158, 11, 0.35)",
+                    background:
+                      hipAlert.level === "danger"
+                        ? "rgba(254, 226, 226, 0.55)"
+                        : "rgba(254, 243, 199, 0.55)",
+                    color: "#111827",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    lineHeight: 1.35,
+                  }}
+                >
+                  {hipAlert.level === "danger" ? (
+                    <>
+                      ATENCIÓN: Por cadera este talle puede no pasar / quedar muy ajustado
+                      {hipAlert.preset === "slim" ? " (slim)" : ""}, aunque la cintura dé bien.
+                      <div style={{ marginTop: 6, fontWeight: 600, fontSize: 12, color: "#374151" }}>
+                        Sugerencia: probá un talle más si preferís estar tranquilo.
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      Ojo: cadera al límite. Podría quedar ajustado
+                      {hipAlert.preset === "slim" ? " (slim)" : ""}.
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -1057,6 +1142,15 @@ const [shoeSystem, setShoeSystem] = useState<ShoeSystem>("ARG");
                       type="number"
                       value={perfil.cintura as any}
                       onChange={(e) => setPerfil((p) => ({ ...p, cintura: Number(e.target.value) } as any))}
+                      style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
+                    />
+                  </label>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, minWidth: 0 }}>
+                    <span style={{ color: "#6b7280" }}>Cadera (cm)</span>
+                    <input
+                      type="number"
+                      value={(perfil as any).cadera as any}
+                      onChange={(e) => setPerfil((p) => ({ ...p, cadera: Number(e.target.value) } as any))}
                       style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
                     />
                   </label>
