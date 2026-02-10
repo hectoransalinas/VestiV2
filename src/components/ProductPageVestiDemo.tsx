@@ -228,7 +228,6 @@ type LastRecState = {
   resumenZonas: string;
   mensaje: string;
   tag: string;
-  mannequinGender?: "M" | "F";
 } | null;
 
 /** Normaliza categorías para que la UI y el motor hablen el mismo idioma */
@@ -444,7 +443,7 @@ const [shoeSystem, setShoeSystem] = useState<ShoeSystem>("ARG");
           ? productFromShopify.shopDomain
           : "Vesti") || "Vesti";
 
-      return variants.map((v) => ({
+            const mapped = variants.map((v) => ({
         id: String(v.id),
         name: baseName,
         brand: baseBrand,
@@ -462,6 +461,35 @@ const [shoeSystem, setShoeSystem] = useState<ShoeSystem>("ARG");
         stretchPct: Number(v.stretchPct ?? 0),
         easePreset: String(v.easePreset ?? "regular"),
       }));
+
+      // IMPORTANTE: el orden de variantes de Shopify no siempre coincide con XS→…→XXL o 36→45.
+      // Para comparar (talle -1 / +1) necesitamos un orden estable.
+      const orderAlpha = ["XXXS","XXS","XS","S","M","L","XL","XXL","XXXL","XXXXL","Default Title"];
+      const norm = (s: string) => String(s ?? "").trim().toUpperCase();
+      const idx = (s: string) => orderAlpha.indexOf(norm(s));
+      const asNum = (s: string) => {
+        const n = Number(String(s).replace(/[^0-9.]/g, ""));
+        return Number.isFinite(n) ? n : NaN;
+      };
+
+      return mapped.sort((a, b) => {
+        const aNum = asNum(a.sizeLabel);
+        const bNum = asNum(b.sizeLabel);
+        const aHas = Number.isFinite(aNum);
+        const bHas = Number.isFinite(bNum);
+        if (aHas && bHas) return aNum - bNum;
+        if (aHas && !bHas) return -1;
+        if (!aHas && bHas) return 1;
+
+        const ai = idx(a.sizeLabel);
+        const bi = idx(b.sizeLabel);
+        if (ai !== -1 && bi !== -1) return ai - bi;
+        if (ai !== -1 && bi === -1) return -1;
+        if (ai === -1 && bi !== -1) return 1;
+
+        return norm(a.sizeLabel).localeCompare(norm(b.sizeLabel));
+      });
+
     }
 
     return DEMO_GARMENTS;
@@ -548,7 +576,7 @@ const [shoeSystem, setShoeSystem] = useState<ShoeSystem>("ARG");
   const handleRecomendacion = (data: any) => {
     if (!data) return;
 
-    const { fit, recommendation, garment, mannequinGender } = data;
+    const { fit, recommendation, garment } = data;
 
     const tallaActual =
       (garment && (garment as DemoGarment).sizeLabel) ||
@@ -606,7 +634,6 @@ const [shoeSystem, setShoeSystem] = useState<ShoeSystem>("ARG");
       resumenZonas: resumenZonas || "Aún sin datos de calce.",
       mensaje,
       tag: tagNormalizado,
-      mannequinGender,
     });
   };
 
@@ -678,55 +705,20 @@ const [shoeSystem, setShoeSystem] = useState<ShoeSystem>("ARG");
   // Render limpio tipo "guía de talles" (estilo Adidas/Nike).
   // =========================
   if (isSizeGuideMode) {
-  const talleActualArg = selectedGarment?.sizeLabel ?? "—";
-  const isShoes = String(effectiveCategory).toLowerCase() === "shoes";
+    const talleActualArg = selectedGarment?.sizeLabel ?? "—";
+    const isShoes = String(effectiveCategory).toLowerCase() === "shoes";
+    const suggestedArg = (lastRec?.tallaSugerida ?? talleActualArg) as any;
+    const talleSugerido = isShoes
+      ? argToSystemLabel(String(suggestedArg), shoeSystem)
+      : String(suggestedArg);
 
-  const resumen = lastRec?.resumenZonas ?? "";
-  const isPants = String(effectiveCategory).toLowerCase() === "pants";
-  const hipBlocking = isPants && /cadera\s*:\s*ajustado/i.test(resumen);
+    const mensaje = isShoes
+      ? buildMensaje(String(lastRec?.tag ?? "OK"), effectiveCategory)
+      : lastRec?.mensaje ?? "Cargando recomendación…";
 
-  // Sugerencia base: la que viene del motor (tag) + size actual
-  let suggestedArg: any = (lastRec?.tallaSugerida ?? talleActualArg) as any;
+    const resumen = lastRec?.resumenZonas ?? "";
 
-  // Regla de negocio: si CADERA está AJUSTADO, ese talle NO puede ser "ideal".
-  // En ese caso sugerimos subir 1 talle (si existe).
-  if (hipBlocking) {
-    const currentId = selectedGarment?.id;
-    const currentIndex = garmentOptions.findIndex(
-      (g) => String(g.id) === String(currentId)
-    );
-    if (currentIndex >= 0 && currentIndex < garmentOptions.length - 1) {
-      suggestedArg = garmentOptions[currentIndex + 1].sizeLabel;
-    }
-  }
-
-  const talleSugerido = isShoes
-    ? argToSystemLabel(String(suggestedArg), shoeSystem)
-    : String(suggestedArg);
-
-  const mensajeBase = isShoes
-    ? buildMensaje(String(lastRec?.tag ?? "OK"), effectiveCategory)
-    : lastRec?.mensaje ?? "Cargando recomendación…";
-
-  // Copy final (cuando priorizamos cadera)
-  const isFemale = String((lastRec as any)?.mannequinGender ?? "M") === "F";
-  const mensajeFinal = hipBlocking
-    ? (isFemale
-        ? "Priorizamos la cadera para asegurar comodidad. En talles menores podría no pasar o quedar muy ajustado."
-        : "Este talle prioriza la cadera (zona sensible). La cintura puede quedar algo holgada, lo cual es normal si elegís comodidad en cadera.")
-    : mensajeBase;
-
-  // Si el usuario está mirando otro talle (tabs), lo aclaramos para evitar confusión.
-  const talleViendo = isShoes
-    ? argToSystemLabel(String(talleActualArg), shoeSystem)
-    : String(talleActualArg);
-
-  const mensajeDisplay =
-    talleViendo !== talleSugerido
-      ? mensajeFinal
-      : mensajeFinal;
-
-const chipsBase = resumen ? resumen.split(" · ").filter(Boolean) : [];
+    const chipsBase = resumen ? resumen.split(" · ").filter(Boolean) : [];
 
     // En Pants mostramos "cadera" siempre (aunque falten datos).
     const chips = useMemo(() => {
@@ -981,34 +973,12 @@ const chipsBase = resumen ? resumen.split(" · ").filter(Boolean) : [];
           Tu talle ideal
         </div>
 
-
-        {talleViendo !== talleSugerido && (
-          <div
-            style={{
-              marginTop: 6,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "4px 10px",
-              borderRadius: 999,
-              background: "#F3F4F6",
-              color: "#374151",
-              fontSize: 12,
-              fontWeight: 600,
-              width: "fit-content",
-            }}
-            title="Estás comparando cómo cambia el calce en otro talle"
-          >
-            Comparando: <span style={{ color: "#111827" }}>{talleViendo}</span>
-          </div>
-        )}
-
         <div style={{ fontSize: 54, fontWeight: 800, marginTop: 10, color: "#111827" }}>
           {talleSugerido}
         </div>
 
         <div style={{ color: "#374151", marginTop: 6, lineHeight: 1.4 }}>
-          {mensajeDisplay}
+          {mensaje}
         </div>
 
         <div
