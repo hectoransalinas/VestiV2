@@ -584,7 +584,7 @@ const [shoeSystem, setShoeSystem] = useState<ShoeSystem>("ARG");
     // Pants: si la cadera está "Ajustado", priorizamos subir talle (evita recomendar S cuando la cadera no pasa).
     const hipStatus = recommendation?.fit?.widths?.find((w: any) => String(w.zone).toLowerCase() === "cadera")?.status;
     const hipIsTight = typeof hipStatus === "string" && hipStatus.toLowerCase().includes("ajust");
-    const effectiveTag = category === "pants" && hipIsTight ? "SIZE_UP" : tagNormalizado;
+    const effectiveTag = String(effectiveCategory).toLowerCase() === "pants" && hipIsTight ? "SIZE_UP" : tagNormalizado;
 
     let tallaSugerida = tallaActual;
 
