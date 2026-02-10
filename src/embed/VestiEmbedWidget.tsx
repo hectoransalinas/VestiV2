@@ -19,6 +19,7 @@ type VestiEmbedProps = {
     recommendation: ReturnType<typeof makeRecommendation>;
     user: Measurements;
     garment: Garment;
+    mannequinGender: "M" | "F";
   }) => void;
 };
 
@@ -465,13 +466,14 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
       recommendation: rec,
       user,
       garment: prenda,
+      mannequinGender,
     };
 
     const serialized = JSON.stringify(payload);
     if (serialized === lastPayloadRef.current) return;
     lastPayloadRef.current = serialized;
     onRecomendacion(payload);
-  }, [fitUi, rec, user, prenda, onRecomendacion]);
+  }, [fitUi, rec, user, prenda, mannequinGender, onRecomendacion]);
 
   const handleChange =
     (field: keyof Measurements) => (e: React.ChangeEvent<HTMLInputElement>) => {
