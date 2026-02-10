@@ -723,7 +723,7 @@ const [shoeSystem, setShoeSystem] = useState<ShoeSystem>("ARG");
 
   const mensajeDisplay =
     talleViendo !== talleSugerido
-      ? `Estás viendo talle ${talleViendo}. ${mensajeFinal}`
+      ? mensajeFinal
       : mensajeFinal;
 
 const chipsBase = resumen ? resumen.split(" · ").filter(Boolean) : [];
@@ -980,6 +980,28 @@ const chipsBase = resumen ? resumen.split(" · ").filter(Boolean) : [];
         >
           Tu talle ideal
         </div>
+
+
+        {talleViendo !== talleSugerido && (
+          <div
+            style={{
+              marginTop: 6,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "4px 10px",
+              borderRadius: 999,
+              background: "#F3F4F6",
+              color: "#374151",
+              fontSize: 12,
+              fontWeight: 600,
+              width: "fit-content",
+            }}
+            title="Estás comparando cómo cambia el calce en otro talle"
+          >
+            Comparando: <span style={{ color: "#111827" }}>{talleViendo}</span>
+          </div>
+        )}
 
         <div style={{ fontSize: 54, fontWeight: 800, marginTop: 10, color: "#111827" }}>
           {talleSugerido}

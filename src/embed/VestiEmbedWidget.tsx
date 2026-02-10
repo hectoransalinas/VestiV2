@@ -472,7 +472,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
     if (serialized === lastPayloadRef.current) return;
     lastPayloadRef.current = serialized;
     onRecomendacion(payload);
-  }, [fitUi, rec, user, prenda, mannequinGender, onRecomendacion]);
+  }, [fitUi, rec, user, prenda, onRecomendacion]);
 
   const handleChange =
     (field: keyof Measurements) => (e: React.ChangeEvent<HTMLInputElement>) => {
