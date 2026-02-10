@@ -228,6 +228,7 @@ type LastRecState = {
   resumenZonas: string;
   mensaje: string;
   tag: string;
+  mannequinGender?: "M" | "F";
 } | null;
 
 /** Normaliza categorías para que la UI y el motor hablen el mismo idioma */
@@ -547,7 +548,7 @@ const [shoeSystem, setShoeSystem] = useState<ShoeSystem>("ARG");
   const handleRecomendacion = (data: any) => {
     if (!data) return;
 
-    const { fit, recommendation, garment } = data;
+    const { fit, recommendation, garment, mannequinGender } = data;
 
     const tallaActual =
       (garment && (garment as DemoGarment).sizeLabel) ||
@@ -605,6 +606,7 @@ const [shoeSystem, setShoeSystem] = useState<ShoeSystem>("ARG");
       resumenZonas: resumenZonas || "Aún sin datos de calce.",
       mensaje,
       tag: tagNormalizado,
+      mannequinGender,
     });
   };
 
@@ -676,23 +678,55 @@ const [shoeSystem, setShoeSystem] = useState<ShoeSystem>("ARG");
   // Render limpio tipo "guía de talles" (estilo Adidas/Nike).
   // =========================
   if (isSizeGuideMode) {
-    const talleActualArg = selectedGarment?.sizeLabel ?? "—";
-    const isShoes = String(effectiveCategory).toLowerCase() === "shoes";
-    const suggestedArg = (lastRec?.tallaSugerida ?? talleActualArg) as any;
-    const talleSugerido = isShoes
-      ? argToSystemLabel(String(suggestedArg), shoeSystem)
-      : String(suggestedArg);
+  const talleActualArg = selectedGarment?.sizeLabel ?? "—";
+  const isShoes = String(effectiveCategory).toLowerCase() === "shoes";
 
-    
-    const talleViendo = isShoes ? argToSystemLabel(String(talleActualArg), shoeSystem) : String(talleActualArg);
-    const mensajeDisplay = talleViendo !== talleSugerido ? `Estás viendo talle ${talleViendo}. ${mensajeDisplay}` : mensaje;
-const mensaje = isShoes
-      ? buildMensaje(String(lastRec?.tag ?? "OK"), effectiveCategory)
-      : lastRec?.mensaje ?? "Cargando recomendación…";
+  const resumen = lastRec?.resumenZonas ?? "";
+  const isPants = String(effectiveCategory).toLowerCase() === "pants";
+  const hipBlocking = isPants && /cadera\s*:\s*ajustado/i.test(resumen);
 
-    const resumen = lastRec?.resumenZonas ?? "";
+  // Sugerencia base: la que viene del motor (tag) + size actual
+  let suggestedArg: any = (lastRec?.tallaSugerida ?? talleActualArg) as any;
 
-    const chipsBase = resumen ? resumen.split(" · ").filter(Boolean) : [];
+  // Regla de negocio: si CADERA está AJUSTADO, ese talle NO puede ser "ideal".
+  // En ese caso sugerimos subir 1 talle (si existe).
+  if (hipBlocking) {
+    const currentId = selectedGarment?.id;
+    const currentIndex = garmentOptions.findIndex(
+      (g) => String(g.id) === String(currentId)
+    );
+    if (currentIndex >= 0 && currentIndex < garmentOptions.length - 1) {
+      suggestedArg = garmentOptions[currentIndex + 1].sizeLabel;
+    }
+  }
+
+  const talleSugerido = isShoes
+    ? argToSystemLabel(String(suggestedArg), shoeSystem)
+    : String(suggestedArg);
+
+  const mensajeBase = isShoes
+    ? buildMensaje(String(lastRec?.tag ?? "OK"), effectiveCategory)
+    : lastRec?.mensaje ?? "Cargando recomendación…";
+
+  // Copy final (cuando priorizamos cadera)
+  const isFemale = String((lastRec as any)?.mannequinGender ?? "M") === "F";
+  const mensajeFinal = hipBlocking
+    ? (isFemale
+        ? "Priorizamos la cadera para asegurar comodidad. En talles menores podría no pasar o quedar muy ajustado."
+        : "Este talle prioriza la cadera (zona sensible). La cintura puede quedar algo holgada, lo cual es normal si elegís comodidad en cadera.")
+    : mensajeBase;
+
+  // Si el usuario está mirando otro talle (tabs), lo aclaramos para evitar confusión.
+  const talleViendo = isShoes
+    ? argToSystemLabel(String(talleActualArg), shoeSystem)
+    : String(talleActualArg);
+
+  const mensajeDisplay =
+    talleViendo !== talleSugerido
+      ? `Estás viendo talle ${talleViendo}. ${mensajeFinal}`
+      : mensajeFinal;
+
+const chipsBase = resumen ? resumen.split(" · ").filter(Boolean) : [];
 
     // En Pants mostramos "cadera" siempre (aunque falten datos).
     const chips = useMemo(() => {
@@ -947,33 +981,12 @@ const mensaje = isShoes
           Tu talle ideal
         </div>
 
-        {talleViendo !== talleSugerido && (
-          <div
-            style={{
-              marginTop: 6,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "4px 10px",
-              borderRadius: 999,
-              background: "#F3F4F6",
-              color: "#374151",
-              fontSize: 12,
-              fontWeight: 600,
-              width: "fit-content",
-            }}
-            title="Podés tocar S / M / L para comparar cómo cambia el calce en cada talle."
-          >
-            Estás viendo: <span style={{ color: "#111827" }}>{talleViendo}</span>
-          </div>
-        )}
-
         <div style={{ fontSize: 54, fontWeight: 800, marginTop: 10, color: "#111827" }}>
           {talleSugerido}
         </div>
 
         <div style={{ color: "#374151", marginTop: 6, lineHeight: 1.4 }}>
-          {mensaje}
+          {mensajeDisplay}
         </div>
 
         <div
@@ -1031,7 +1044,7 @@ const mensaje = isShoes
                 >
                   {hipAlert.level === "danger" ? (
                     <>
-                      ATENCIÓN: En talle <b>{talleViendo}</b>, por cadera puede no pasar / quedar muy ajustado
+                      ATENCIÓN: Por cadera este talle puede no pasar / quedar muy ajustado
                       {hipAlert.preset === "slim" ? " (slim)" : ""}, aunque la cintura dé bien.
                       <div style={{ marginTop: 6, fontWeight: 600, fontSize: 12, color: "#374151" }}>
                         Sugerencia: probá un talle más si preferís estar tranquilo.
