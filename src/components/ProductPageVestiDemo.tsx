@@ -581,112 +581,30 @@ const [shoeSystem, setShoeSystem] = useState<ShoeSystem>("ARG");
         ? rawTag
         : "OK";
 
-    // --- Política de decisión / mensajes (Pants): evitar contradicciones Cintura vs Cadera ---
-const mannequinGender: "M" | "F" = (data?.mannequinGender as any) === "F" ? "F" : "M";
-const isPants = String(effectiveCategory ?? "").toLowerCase() === "pants";
+    let tallaSugerida = tallaActual;
 
-const evalHipRisk = (gar: any, userHip: number) => {
-  const garmentHip = Number(gar?.measures?.cadera ?? 0);
-  if (!(userHip > 0 && garmentHip > 0)) return null;
+    const currentId =
+      (garment && (garment as DemoGarment).id) || selectedGarment?.id;
+    const currentIndex = garmentOptions.findIndex((g) => String(g.id) === String(currentId));
 
-  const presetRaw = String(gar?.easePreset ?? "regular").toLowerCase();
-  const preset =
-    presetRaw === "slim" || presetRaw === "regular" || presetRaw === "oversize"
-      ? presetRaw
-      : "regular";
-
-  const stretchPct = Number(gar?.stretchPct ?? 0);
-  const stretch = Number.isFinite(stretchPct) ? stretchPct / 100 : 0;
-
-  const effectiveHip = garmentHip * (1 + stretch);
-  const delta = effectiveHip - userHip; // + holgura, - ajustado
-
-  const warnTh = preset === "slim" ? 3 : 2;
-  const dangerTh = preset === "slim" ? 1 : 0;
-
-  const level =
-    delta < dangerTh ? ("danger" as const) : delta < warnTh ? ("warning" as const) : ("ok" as const);
-
-  return { level, delta, preset };
-};
-
-let tallaSugerida = tallaActual;
-
-const currentId =
-  (garment && (garment as DemoGarment).id) || selectedGarment?.id;
-const currentIndex = garmentOptions.findIndex((g) => String(g.id) === String(currentId));
-
-// Hip risk hoy (talle actual) y en el talle anterior (para decidir si sugerir bajar es válido)
-const userHip = Number((perfil as any)?.cadera ?? 0);
-const hipNow = evalHipRisk(garment ?? selectedGarment, userHip);
-const hipDown = currentIndex > 0 ? evalHipRisk(garmentOptions[currentIndex - 1], userHip) : null;
-
-// Tag "base" que viene del motor (cintura manda en el motor)
-const baseTag = tagNormalizado;
-
-// Tag final (UI): aplica reglas de negocio para no contradecirse con cadera
-let finalTag: "OK" | "SIZE_UP" | "SIZE_DOWN" | "CHECK_LENGTH" = baseTag;
-
-// 1) Maniquí F: en pants, CADERA manda (decisión).
-// - Permitimos sugerir bajar SOLO si al bajar la cadera sigue OK (no reintroduce riesgo).
-// - Si hay riesgo real en cadera, sí sugerimos subir (aunque la cintura "dé bien").
-if (isPants && mannequinGender === "F") {
-  if (baseTag === "SIZE_DOWN") {
-    if (hipDown && (hipDown.level === "warning" || hipDown.level === "danger")) {
-      finalTag = "OK";
-    } else {
-      finalTag = "SIZE_DOWN";
+    if (currentIndex >= 0) {
+      if (
+        tagNormalizado === "SIZE_UP" &&
+        currentIndex < garmentOptions.length - 1
+      ) {
+        tallaSugerida = garmentOptions[currentIndex + 1].sizeLabel;
+      } else if (tagNormalizado === "SIZE_DOWN" && currentIndex > 0) {
+        tallaSugerida = garmentOptions[currentIndex - 1].sizeLabel;
+      }
     }
-  }
 
-  if (hipNow?.level === "danger" && currentIndex >= 0 && currentIndex < garmentOptions.length - 1) {
-    finalTag = "SIZE_UP";
-  }
-}
-
-// 2) Maniquí M: cintura manda, PERO no sugerimos bajar si eso reintroduce riesgo en cadera.
-if (isPants && mannequinGender === "M") {
-  if (baseTag === "SIZE_DOWN" && hipDown && (hipDown.level === "warning" || hipDown.level === "danger")) {
-    finalTag = "OK";
-  }
-}
-
-// 3) Resolver talla sugerida según finalTag
-if (currentIndex >= 0) {
-  if (finalTag === "SIZE_UP" && currentIndex < garmentOptions.length - 1) {
-    tallaSugerida = garmentOptions[currentIndex + 1].sizeLabel;
-  } else if (finalTag === "SIZE_DOWN" && currentIndex > 0) {
-    tallaSugerida = garmentOptions[currentIndex - 1].sizeLabel;
-  }
-}
-
-// 4) Mensaje final (copies cerrados)
-let mensaje = buildMensaje(finalTag, effectiveCategory);
-
-if (isPants) {
-  // Caso: venías de subir por cadera y ahora la cintura queda holgada -> NO confundir con "bajá".
-  if (finalTag === "OK" && baseTag === "SIZE_DOWN") {
-    if (mannequinGender === "F") {
-      mensaje =
-        "Priorizamos la cadera para asegurar comodidad. La cintura puede quedar más holgada, lo cual es normal en este talle.";
-    } else {
-      mensaje =
-        "Este talle prioriza la cadera (zona sensible). La cintura puede quedar algo holgada, lo cual es normal si elegís comodidad en cadera.";
-    }
-  }
-
-  // Maniquí F: cuando hay riesgo real en cadera, el copy debe explicitar prioridad.
-  if (mannequinGender === "F" && finalTag === "SIZE_UP") {
-    mensaje =
-      "Priorizamos la cadera para asegurar comodidad. Por cadera, este talle puede no pasar o quedar muy ajustado. Sugerencia: probá un talle más.";
-  }
-}
+    const mensaje = buildMensaje(tagNormalizado, effectiveCategory);
 
     setLastRec({
       tallaSugerida,
       resumenZonas: resumenZonas || "Aún sin datos de calce.",
       mensaje,
-      tag: finalTag,
+      tag: tagNormalizado,
     });
   };
 
@@ -765,7 +683,10 @@ if (isPants) {
       ? argToSystemLabel(String(suggestedArg), shoeSystem)
       : String(suggestedArg);
 
-    const mensaje = isShoes
+    
+    const talleViendo = isShoes ? argToSystemLabel(String(talleActualArg), shoeSystem) : String(talleActualArg);
+    const mensajeDisplay = talleViendo !== talleSugerido ? `Estás viendo talle ${talleViendo}. ${mensajeDisplay}` : mensaje;
+const mensaje = isShoes
       ? buildMensaje(String(lastRec?.tag ?? "OK"), effectiveCategory)
       : lastRec?.mensaje ?? "Cargando recomendación…";
 
@@ -1026,6 +947,27 @@ if (isPants) {
           Tu talle ideal
         </div>
 
+        {talleViendo !== talleSugerido && (
+          <div
+            style={{
+              marginTop: 6,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "4px 10px",
+              borderRadius: 999,
+              background: "#F3F4F6",
+              color: "#374151",
+              fontSize: 12,
+              fontWeight: 600,
+              width: "fit-content",
+            }}
+            title="Podés tocar S / M / L para comparar cómo cambia el calce en cada talle."
+          >
+            Estás viendo: <span style={{ color: "#111827" }}>{talleViendo}</span>
+          </div>
+        )}
+
         <div style={{ fontSize: 54, fontWeight: 800, marginTop: 10, color: "#111827" }}>
           {talleSugerido}
         </div>
@@ -1089,7 +1031,7 @@ if (isPants) {
                 >
                   {hipAlert.level === "danger" ? (
                     <>
-                      ATENCIÓN: Por cadera este talle puede no pasar / quedar muy ajustado
+                      ATENCIÓN: En talle <b>{talleViendo}</b>, por cadera puede no pasar / quedar muy ajustado
                       {hipAlert.preset === "slim" ? " (slim)" : ""}, aunque la cintura dé bien.
                       <div style={{ marginTop: 6, fontWeight: 600, fontSize: 12, color: "#374151" }}>
                         Sugerencia: probá un talle más si preferís estar tranquilo.
