@@ -183,7 +183,6 @@ export default function App() {
           }));
         }
       }
-      }
     };
 
     window.addEventListener("message", listener);
