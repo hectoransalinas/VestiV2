@@ -485,20 +485,20 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
     const val = Number(String(e.target.value).replace(",", "."));
     setFootLength(isNaN(val) ? 0 : val);
   };
-  const handleShoeSystemChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const system = e.target.value as "ARG" | "EUR" | "USA";
-    setShoeSizeSystem(system);
-    const cm = shoeSizeToFootLengthCm({ system, value: shoeSizeValue, gender: mannequinGender });
-    setFootLength(cm);
-  };
+const handleShoeSystemChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const system = e.target.value as "ARG" | "EUR" | "USA";
+  setShoeSizeSystem(system);
+  const cm = shoeSizeToFootLengthCm({ system, value: shoeSizeValue, gender: mannequinGender });
+  setFootLength(cm);
+};
 
-  const handleShoeSizeValueChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = Number(String(e.target.value).replace(",", "."));
-    const value = isNaN(val) ? 0 : val;
-    setShoeSizeValue(value);
-    const cm = shoeSizeToFootLengthCm({ system: shoeSizeSystem, value, gender: mannequinGender });
-    setFootLength(cm);
-  };
+const handleShoeSizeValueChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const val = Number(String(e.target.value).replace(",", "."));
+  const value = isNaN(val) ? 0 : val;
+  setShoeSizeValue(value);
+  const cm = shoeSizeToFootLengthCm({ system: shoeSizeSystem, value, gender: mannequinGender });
+  setFootLength(cm);
+};
 
 
   // UI recomendación (modo app/demo)

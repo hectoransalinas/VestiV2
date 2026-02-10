@@ -548,24 +548,6 @@ const [shoeSystem, setShoeSystem] = useState<ShoeSystem>("ARG");
     if (!data) return;
 
     const { fit, recommendation, garment } = data;
-    const normSize = (s: any) =>
-      String(s ?? "")
-        .toUpperCase()
-        .replace(/\s+/g, "");
-    const SIZE_ORDER = ["XXS", "XS", "S", "M", "L", "XL", "XXL", "3XL", "4XL", "5XL"];
-    const sizeRank = (s: any) => {
-      const n = normSize(s);
-      const idx = SIZE_ORDER.indexOf(n);
-      return idx === -1 ? 999 : idx;
-    };
-    // Usamos un orden estable de talles (independiente del orden que venga de Shopify)
-    const orderedGarmentOptions = [...garmentOptions].sort((a: any, b: any) => {
-      const ra = sizeRank(a?.sizeLabel);
-      const rb = sizeRank(b?.sizeLabel);
-      if (ra !== rb) return ra - rb;
-      return String(a?.sizeLabel ?? "").localeCompare(String(b?.sizeLabel ?? ""));
-    });
-
 
     const tallaActual =
       (garment && (garment as DemoGarment).sizeLabel) ||
@@ -637,7 +619,7 @@ const currentIndex = garmentOptions.findIndex((g) => String(g.id) === String(cur
 // Hip risk hoy (talle actual) y en el talle anterior (para decidir si sugerir bajar es válido)
 const userHip = Number((perfil as any)?.cadera ?? 0);
 const hipNow = evalHipRisk(garment ?? selectedGarment, userHip);
-const hipDown = currentIndex > 0 ? evalHipRisk(orderedGarmentOptions[currentIndex - 1], userHip) : null;
+const hipDown = currentIndex > 0 ? evalHipRisk(garmentOptions[currentIndex - 1], userHip) : null;
 
 // Tag "base" que viene del motor (cintura manda en el motor)
 const baseTag = tagNormalizado;
@@ -645,36 +627,36 @@ const baseTag = tagNormalizado;
 // Tag final (UI): aplica reglas de negocio para no contradecirse con cadera
 let finalTag: "OK" | "SIZE_UP" | "SIZE_DOWN" | "CHECK_LENGTH" = baseTag;
 
-// 1) Maniquí F: en pants, CADERA manda (decisión).
-// - Permitimos sugerir bajar SOLO si al bajar la cadera sigue OK (no reintroduce riesgo).
-// - Si hay riesgo real en cadera, sí sugerimos subir (aunque la cintura "dé bien").
+// 1) Maniquí F: en pants, CADERA manda (decisión). Nunca sugerimos bajar por cintura.
 if (isPants && mannequinGender === "F") {
-  if (baseTag === "SIZE_DOWN") {
-    if (hipDown && (hipDown.level === "warning" || hipDown.level === "danger")) {
-      finalTag = "OK";
-    } else {
-      finalTag = "SIZE_DOWN";
-    }
-  }
+  if (baseTag === "SIZE_DOWN") finalTag = "OK";
 
-  if (hipNow?.level === "danger" && currentIndex >= 0 && currentIndex < orderedGarmentOptions.length - 1) {
+  // Si por cadera está en riesgo real, sí sugerimos subir (aunque cintura "dé bien").
+  if (hipNow?.level === "danger" && currentIndex >= 0 && currentIndex < garmentOptions.length - 1) {
     finalTag = "SIZE_UP";
   }
 }
 
 // 2) Maniquí M: cintura manda, PERO no sugerimos bajar si eso reintroduce riesgo en cadera.
 if (isPants && mannequinGender === "M") {
+  // En M: si cintura sugiere bajar pero eso reintroduce riesgo de cadera, no bajamos.
   if (baseTag === "SIZE_DOWN" && hipDown && (hipDown.level === "warning" || hipDown.level === "danger")) {
     finalTag = "OK";
+  }
+
+  // Si en el talle actual la cadera queda *ajustada* (danger), sugerimos subir un talle
+  // aunque la cintura esté OK / CHECK_LENGTH.
+  if (baseTag !== "SIZE_DOWN" && hipNow && hipNow.level === "danger" && currentIndex >= 0 && currentIndex < garmentOptions.length - 1) {
+    finalTag = "SIZE_UP";
   }
 }
 
 // 3) Resolver talla sugerida según finalTag
 if (currentIndex >= 0) {
-  if (finalTag === "SIZE_UP" && currentIndex < orderedGarmentOptions.length - 1) {
-    tallaSugerida = orderedGarmentOptions[currentIndex + 1].sizeLabel;
+  if (finalTag === "SIZE_UP" && currentIndex < garmentOptions.length - 1) {
+    tallaSugerida = garmentOptions[currentIndex + 1].sizeLabel;
   } else if (finalTag === "SIZE_DOWN" && currentIndex > 0) {
-    tallaSugerida = orderedGarmentOptions[currentIndex - 1].sizeLabel;
+    tallaSugerida = garmentOptions[currentIndex - 1].sizeLabel;
   }
 }
 
