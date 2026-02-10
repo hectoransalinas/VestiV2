@@ -19,7 +19,6 @@ type VestiEmbedProps = {
     recommendation: ReturnType<typeof makeRecommendation>;
     user: Measurements;
     garment: Garment;
-    mannequinGender: "M" | "F";
   }) => void;
 };
 
@@ -416,7 +415,6 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
       makeRecommendation({
         category: categoria,
         garment: prenda,
-      mannequinGender,
         fit: fitUi,
       }),
     [categoria, prenda, fitUi]

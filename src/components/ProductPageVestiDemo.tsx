@@ -548,6 +548,7 @@ const [shoeSystem, setShoeSystem] = useState<ShoeSystem>("ARG");
     if (!data) return;
 
     const { fit, recommendation, garment } = data;
+    const mannequinGender = String((data as any)?.mannequinGender ?? "").toUpperCase();
 
     const tallaActual =
       (garment && (garment as DemoGarment).sizeLabel) ||
@@ -573,7 +574,7 @@ const [shoeSystem, setShoeSystem] = useState<ShoeSystem>("ARG");
     const resumenZonas = [...widths, ...lengths].join(" · ");
 
     const rawTag = String(recommendation?.tag ?? "OK").toUpperCase();
-    let tagNormalizado =
+    const tagNormalizado =
       rawTag === "SIZE_UP" ||
       rawTag === "SIZE_DOWN" ||
       rawTag === "OK" ||
@@ -598,127 +599,34 @@ const [shoeSystem, setShoeSystem] = useState<ShoeSystem>("ARG");
       }
     }
 
-
-    // =========================
-    // PANTS · Reglas finales por maniquí (producto)
-    // - F: CADERA manda (evitar talles que no pasen de cadera)
-    // - M: CINTURA manda (cadera informa/advierte)
-    // Importante: la recomendación debe ser función del estado ACTUAL (sin historial pegajoso).
-    // =========================
-    const mannequinGender = (data as any)?.mannequinGender as ("M" | "F" | undefined);
-
+    // -----------------------------
+    // Regla producto: Pants + Maniquí F
+    // Si la cadera está Ajustada/Justa, NO permitimos que una holgura en cintura dispare "bajar talle".
+    // (Evita el caso: "priorizamos cadera" y de golpe sugiere S por cintura holgada.)
+    // Importante: esto solo bloquea SIZE_DOWN cuando hay conflicto real de cadera.
+    // -----------------------------
     const isPants = String(effectiveCategory).toLowerCase() === "pants";
+    const hipStatusRaw = (fit?.widths ?? []).find((w: any) => normalizeZoneKey(w?.zone) === "cadera")
+      ?.status;
+    const hipStatus = String(hipStatusRaw ?? "").trim();
+    const hipTight = hipStatus === "Ajustado" || hipStatus === "Justo";
 
-    // Evalúa riesgo de cadera para un garment específico según perfil actual + parámetros de la prenda
-    const evalHipRisk = (g: any) => {
-      if (!isPants) return null;
-      const userHip = Number((perfil as any)?.cadera ?? 0);
-      const garmentHip = Number((g as any)?.measures?.cadera ?? 0);
-      if (!(userHip > 0 && garmentHip > 0)) return null;
+    let finalTag = tagNormalizado;
+    let finalTalla = tallaSugerida;
+    let finalMensaje = buildMensaje(tagNormalizado, effectiveCategory);
 
-      const presetRaw = String((g as any)?.easePreset ?? "regular").toLowerCase();
-      const preset =
-        presetRaw === "slim" || presetRaw === "regular" || presetRaw === "oversize"
-          ? presetRaw
-          : "regular";
-
-      const stretchPct = Number((g as any)?.stretchPct ?? 0);
-      const stretch = Number.isFinite(stretchPct) ? stretchPct / 100 : 0;
-
-      const effectiveHip = garmentHip * (1 + stretch);
-      const delta = effectiveHip - userHip; // + holgura, - ajustado
-
-      const warnTh = preset === "slim" ? 3 : 2;
-      const dangerTh = preset === "slim" ? 1 : 0;
-
-      if (delta < dangerTh) return { level: "danger" as const, delta, preset };
-      if (delta < warnTh) return { level: "warning" as const, delta, preset };
-      return null;
-    };
-
-    // Mensajes de negocio (Pants)
-    const msgPantsFemalePrioritizeHip = (extra?: string) =>
-      `Priorizamos la cadera para asegurar comodidad. ${extra ?? ""}`.trim();
-
-    const msgPantsMaleHipWarning = (extra?: string) =>
-      `Atención en cadera: este talle puede quedar ajustado aunque la cintura dé bien. ${extra ?? ""}`.trim();
-
-    // Aplicar reglas solo si tenemos el gender (viene del viewer)
-    if (isPants && mannequinGender) {
-      const currentIndex2 = garmentOptions.findIndex((g) => String(g.id) === String(currentId));
-      const currentG = garmentOptions[currentIndex2] ?? (garment as any) ?? selectedGarment;
-
-      if (mannequinGender === "F") {
-        // F: cadera manda. Si hay riesgo en cadera en el talle actual, sugerir subir.
-        const hipRiskCurrent = evalHipRisk(currentG);
-
-        if (hipRiskCurrent) {
-          // Forzar sugerencia hacia arriba (si existe)
-          if (currentIndex2 >= 0 && currentIndex2 < garmentOptions.length - 1) {
-            tallaSugerida = garmentOptions[currentIndex2 + 1].sizeLabel;
-            tagNormalizado = "SIZE_UP";
-          }
-        } else {
-          // Si NO hay riesgo actual, permitir bajar si el motor lo sugiere,
-          // y además evitar quedarnos "pegados" en un talle mayor: si el motor sugiere bajar, se baja.
-          // (No guardamos historial: se recalcula siempre.)
-          if (tagNormalizado === "SIZE_DOWN" && currentIndex2 > 0) {
-            // Validar que al bajar no reintroduzca riesgo de cadera
-            const downG = garmentOptions[currentIndex2 - 1];
-            const hipRiskDown = evalHipRisk(downG);
-            if (!hipRiskDown) {
-              tallaSugerida = downG.sizeLabel;
-            } else {
-              // Si al bajar reintroduce riesgo, bloqueamos la sugerencia de bajar
-              tagNormalizado = "OK";
-            }
-          }
-        }
-      } else {
-        // M: cintura manda. Si el motor sugiere bajar, solo hacerlo si no reintroduce riesgo fuerte de cadera.
-        if (tagNormalizado === "SIZE_DOWN" && currentIndex2 > 0) {
-          const downG = garmentOptions[currentIndex2 - 1];
-          const hipRiskDown = evalHipRisk(downG);
-          if (hipRiskDown) {
-            // No sugerimos bajar si al bajar la cadera queda comprometida.
-            tagNormalizado = "OK";
-            tallaSugerida = currentG?.sizeLabel ?? tallaActual;
-          }
-        }
-      }
+    if (isPants && mannequinGender === "F" && hipTight && tagNormalizado === "SIZE_DOWN") {
+      finalTag = "OK";
+      finalTalla = tallaActual; // nos quedamos en el talle actual
+      finalMensaje =
+        "Priorizamos la cadera para asegurar comodidad. La cintura puede quedar más holgada, lo cual es normal en este talle.";
     }
-    let mensaje = buildMensaje(tagNormalizado, effectiveCategory);
-
-    // Copies finales por maniquí (solo cuando hay conflicto / regla especial)
-    if (String(effectiveCategory).toLowerCase() === "pants") {
-      const g2 = (data as any)?.mannequinGender as ("M" | "F" | undefined);
-      const currentIndex3 = garmentOptions.findIndex((g) => String(g.id) === String(currentId));
-      const currentG3: any = garmentOptions[currentIndex3] ?? (garment as any) ?? selectedGarment;
-      const hipRiskCurrent3 = evalHipRisk(currentG3);
-
-      if (g2 === "F") {
-        if (hipRiskCurrent3) {
-          mensaje = msgPantsFemalePrioritizeHip(
-            "Por cadera, este talle puede no pasar o quedar muy ajustado. Sugerencia: probá un talle más."
-          );
-        } else if (tagNormalizado === "SIZE_DOWN") {
-          mensaje = msgPantsFemalePrioritizeHip(
-            "La cintura puede quedar más holgada, lo cual es normal en este talle."
-          );
-        }
-      } else if (g2 === "M") {
-        if (hipRiskCurrent3) {
-          mensaje = msgPantsMaleHipWarning("Si preferís más comodidad en cadera, compará con un talle más.");
-        }
-      }
-    }
-
 
     setLastRec({
-      tallaSugerida,
+      tallaSugerida: finalTalla,
       resumenZonas: resumenZonas || "Aún sin datos de calce.",
-      mensaje,
-      tag: tagNormalizado,
+      mensaje: finalMensaje,
+      tag: finalTag,
     });
   };
 
