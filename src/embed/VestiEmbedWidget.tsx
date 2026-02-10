@@ -508,7 +508,7 @@ const fitUiForUi = useMemo(() => {
     if (!onRecomendacion) return;
 
     const payload = {
-      fit: fitUi,
+      fit: fitUiForUi,
       recommendation: rec,
       user,
       garment: prenda,
