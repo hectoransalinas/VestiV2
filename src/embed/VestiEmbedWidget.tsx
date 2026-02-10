@@ -19,6 +19,7 @@ type VestiEmbedProps = {
     recommendation: ReturnType<typeof makeRecommendation>;
     user: Measurements;
     garment: Garment;
+    mannequinGender: "M" | "F";
   }) => void;
 };
 
@@ -67,7 +68,6 @@ const widthTopPercent: Record<string, string> = {
   hombros: "18%",
   pecho: "29%",
   cintura: "43%",
-  cadera: "51%",
 };
 
 const lengthBarLayout: Record<string, { top: string; bottom: string }> = {
@@ -191,33 +191,6 @@ function normalizeFitForUi(fit: any): any {
   return fit;
 }
 
-
-function computeHipZoneForUi(user: any, prenda: any): { zone: string; status: string } | null {
-  const userHip = Number(user?.cadera ?? 0);
-  const garmentHip = Number(prenda?.measures?.cadera ?? prenda?.measures?.hip ?? 0);
-  if (!Number.isFinite(userHip) || userHip <= 0) return null;
-  if (!Number.isFinite(garmentHip) || garmentHip <= 0) return null;
-
-  const stretchPct = Number(prenda?.stretchPct ?? 0);
-  const easePreset = String(prenda?.easePreset ?? "regular").toLowerCase();
-
-  // Ajuste simple por "ease" (informativo, NO debe cambiar talle)
-  const easeCm =
-    easePreset === "slim" ? -2 :
-    easePreset === "oversize" ? 2 :
-    0;
-
-  const stretchCm = garmentHip * (Number.isFinite(stretchPct) ? stretchPct : 0) / 100;
-  const effectiveGarmentHip = garmentHip + stretchCm + easeCm;
-
-  const delta = effectiveGarmentHip - userHip; // positivo = holgura disponible
-
-  // Umbrales suaves (informativos)
-  if (delta < -1) return { zone: "cadera", status: "Ajustado" };
-  if (delta > 6) return { zone: "cadera", status: "Holgado" };
-  return { zone: "cadera", status: "Perfecto" };
-}
-
 const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength, anchorApi }) => {
   if (!fit && viewMode !== "shoes") return null;
 
@@ -255,7 +228,7 @@ const FitOverlay: React.FC<OverlayProps> = ({ fit, viewMode, footLength, anchorA
   return (
     <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
       {widthZones.map((z) => {
-        const top = (isBottomView && z.zone === "cintura") ? "40%" : (isBottomView && z.zone === "cadera") ? "52%" : (widthTopPercent[z.zone] ?? "45%");
+        const top = (isBottomView && z.zone === "cintura") ? "40%" : (widthTopPercent[z.zone] ?? "45%");
         const color = zoneColor(z.status);
         return (
           <div
@@ -397,7 +370,6 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
   onRecomendacion,
 }) => {
   const [user, setUser] = useState<Measurements>(perfilInicial ?? defaultPerfil);
-  useEffect(() => { console.log("%c[VESTI] VESTI_BUILD_HIP_V2", "color:#22c55e;font-weight:bold"); }, []);
 
   const isSizeGuideMode = useMemo(() => {
     try {
@@ -436,35 +408,17 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
 
   const [mannequinGender, setMannequinGender] = useState<"M" | "F">("M");
 
-const fit = useMemo(() => computeFit(user, prenda), [user, prenda]);
-const fitUiBase = useMemo(() => normalizeFitForUi(fit), [fit]);
-
-// Inyectar CADERA como zona informativa SOLO para UI (chips/overlay). No afecta recomendación.
-const fitUiForUi = useMemo(() => {
-  const baseFit: any = fitUiBase;
-  if (!baseFit) return baseFit;
-  if (viewMode !== "bottom") return baseFit;
-
-  const hipZone = computeHipZoneForUi(user, prenda);
-  if (!hipZone) return baseFit;
-
-  const widths = Array.isArray(baseFit.widths) ? [...baseFit.widths] : [];
-  const idx = widths.findIndex((z: any) => z?.zone === "cadera");
-  if (idx >= 0) widths[idx] = { ...widths[idx], status: hipZone.status };
-  else widths.push({ zone: "cadera", status: hipZone.status });
-
-  return { ...baseFit, widths };
-}, [fitUiBase, user, prenda, viewMode]);
-
+  const fit = useMemo(() => computeFit(user, prenda), [user, prenda]);
+  const fitUi = useMemo(() => normalizeFitForUi(fit), [fit]);
 
   const rec = useMemo(
     () =>
       makeRecommendation({
         category: categoria,
         garment: prenda,
-        fit: fitUiBase,
+        fit: fitUi,
       }),
-    [categoria, prenda, fitUiBase]
+    [categoria, prenda, fitUi]
   );
 
   // Auto-ajuste de alto cuando se usa dentro de un iframe embebido
@@ -508,17 +462,18 @@ const fitUiForUi = useMemo(() => {
     if (!onRecomendacion) return;
 
     const payload = {
-      fit: fitUiForUi,
+      fit: fitUi,
       recommendation: rec,
       user,
       garment: prenda,
+      mannequinGender,
     };
 
     const serialized = JSON.stringify(payload);
     if (serialized === lastPayloadRef.current) return;
     lastPayloadRef.current = serialized;
     onRecomendacion(payload);
-  }, [fitUiForUi, rec, user, prenda, onRecomendacion]);
+  }, [fitUi, rec, user, prenda, mannequinGender, onRecomendacion]);
 
   const handleChange =
     (field: keyof Measurements) => (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -554,9 +509,9 @@ const handleShoeSizeValueChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 
   const relevantLengths =
     viewMode === "bottom"
-      ? (fitUiForUi?.lengths ?? []).filter((lz: any) => lz.zone === "largoPierna")
+      ? (fitUi?.lengths ?? []).filter((lz: any) => lz.zone === "largoPierna")
       : viewMode === "top"
-      ? (fitUiForUi?.lengths ?? []).filter((lz: any) => lz.zone === "largoTorso")
+      ? (fitUi?.lengths ?? []).filter((lz: any) => lz.zone === "largoTorso")
       : [];
 
   const hasLengthAlert = relevantLengths.some((lz: any) => (lz?.status ?? "") !== "Perfecto");
@@ -595,8 +550,8 @@ const handleShoeSizeValueChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       : "Revisá las zonas clave del calce antes de decidir tu talle final.";
 
   // Badges por zona (modo app/demo)
-  const allWidths = (fitUiForUi as any)?.widths ?? [];
-  const allLengths = (fitUiForUi as any)?.lengths ?? [];
+  const allWidths = (fitUi as any)?.widths ?? [];
+  const allLengths = (fitUi as any)?.lengths ?? [];
 
   let widthBadges = allWidths;
   let lengthBadges = allLengths;
@@ -613,7 +568,7 @@ const handleShoeSizeValueChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     lengthBadges = [];
   }
 
-  const shoeChip = viewMode === "shoes" ? shoeOverlayFromFit(fitUiForUi, footLength) : null;
+  const shoeChip = viewMode === "shoes" ? shoeOverlayFromFit(fitUi, footLength) : null;
   const shoeChipBorder =
     shoeChip?.statusKey === "Perfecto"
       ? chipBorderColor("Perfecto")
@@ -730,7 +685,7 @@ const handleShoeSizeValueChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         </div>
 
         <MannequinViewer variant={mannequinGender} />
-        <FitOverlay fit={fitUiForUi} viewMode={viewMode} footLength={footLength} />
+        <FitOverlay fit={fitUi} viewMode={viewMode} footLength={footLength} />
       </div>
 
       {/* Recomendación (solo modo app/demo) */}
