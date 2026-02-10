@@ -416,6 +416,7 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
       makeRecommendation({
         category: categoria,
         garment: prenda,
+      mannequinGender,
         fit: fitUi,
       }),
     [categoria, prenda, fitUi]
