@@ -1,5 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import ProductPageVestiDemo from "./components/ProductPageVestiDemo";
+
+/**
+ * App.tsx (sizeguide embed)
+ * - Oculta el panel de debug por defecto (solo ?vestiDebug=1)
+ * - Recibe el producto real por postMessage desde el loader de Shopify
+ * - ✅ Fix: cachea el último producto recibido a nivel window para evitar race condition
+ *   (si el parent envía vesti:product ANTES de que React monte, igual lo capturamos)
+ */
 
 type ProductFromShopify = {
   productId?: string | null;
@@ -22,6 +30,43 @@ type FullProductFromParent = {
   colorName?: string;
   measurements: any;
 };
+
+declare global {
+  interface Window {
+    __VESTI_LAST_PRODUCT__?: FullProductFromParent | null;
+    __VESTI_LISTENER_READY__?: boolean;
+  }
+}
+
+function safeParseJson(input: any): any | null {
+  if (!input) return null;
+  if (typeof input === "object") return input;
+  if (typeof input === "string") {
+    try {
+      return JSON.parse(input);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/** Listener global (fuera de React) para capturar mensajes tempranos */
+(function attachEarlyListener() {
+  if (typeof window === "undefined") return;
+  if (window.__VESTI_LISTENER_READY__) return;
+
+  window.__VESTI_LISTENER_READY__ = true;
+
+  window.addEventListener("message", (event: MessageEvent) => {
+    const payload = safeParseJson(event.data);
+    if (!payload) return;
+
+    if (payload.type === "vesti:product" && payload.product) {
+      window.__VESTI_LAST_PRODUCT__ = payload.product as FullProductFromParent;
+    }
+  });
+})();
 
 function getProductFromQuery(): ProductFromShopify | null {
   const search = typeof window !== "undefined" ? window.location.search : "";
@@ -55,14 +100,20 @@ function getProductFromQuery(): ProductFromShopify | null {
 
 export default function App() {
   const search = typeof window !== "undefined" ? window.location.search : "";
-  const params = new URLSearchParams(search);
+  const params = useMemo(() => new URLSearchParams(search), [search]);
+
   const isSizeGuideMode = params.get("mode") === "sizeguide";
   const isVestiDebug = params.get("vestiDebug") === "1";
 
   const [productFromShopify, setProductFromShopify] =
     useState<ProductFromShopify | null>(null);
+
+  // ✅ inicializa desde el cache si el mensaje llegó antes
   const [fullProductFromParent, setFullProductFromParent] =
-    useState<FullProductFromParent | null>(null);
+    useState<FullProductFromParent | null>(() => {
+      if (typeof window === "undefined") return null;
+      return window.__VESTI_LAST_PRODUCT__ ?? null;
+    });
 
   useEffect(() => {
     const product = getProductFromQuery();
@@ -71,30 +122,23 @@ export default function App() {
 
   useEffect(() => {
     const listener = (event: MessageEvent) => {
-      if (!event.data) return;
-
-      let payload: any = event.data;
-
-      if (typeof payload === "string") {
-        try {
-          payload = JSON.parse(payload);
-        } catch {
-          return;
-        }
-      }
+      const payload = safeParseJson(event.data);
+      if (!payload) return;
 
       if (payload.type === "vesti:product" && payload.product) {
-        setFullProductFromParent(payload.product as FullProductFromParent);
+        const p = payload.product as FullProductFromParent;
+        window.__VESTI_LAST_PRODUCT__ = p;
+        setFullProductFromParent(p);
 
-        if (payload.product?.handle || payload.product?.title) {
+        if (p?.handle || p?.title) {
           setProductFromShopify((prev) => ({
             ...prev,
-            productHandle: prev?.productHandle ?? payload.product.handle ?? null,
-            productTitle: prev?.productTitle ?? payload.product.title ?? null,
-            imageUrl: prev?.imageUrl ?? payload.product.imageUrl ?? null,
-            price: prev?.price ?? payload.product.price ?? null,
-            currency: prev?.currency ?? payload.product.currency ?? null,
-            colorName: prev?.colorName ?? payload.product.colorName ?? null,
+            productHandle: prev?.productHandle ?? p.handle ?? null,
+            productTitle: prev?.productTitle ?? p.title ?? null,
+            imageUrl: prev?.imageUrl ?? p.imageUrl ?? null,
+            price: prev?.price ?? p.price ?? null,
+            currency: prev?.currency ?? p.currency ?? null,
+            colorName: prev?.colorName ?? p.colorName ?? null,
           }));
         }
       }
@@ -102,11 +146,9 @@ export default function App() {
 
     window.addEventListener("message", listener);
 
+    // avisamos al parent que estamos listos (si el loader usa handshake)
     try {
-      window.parent?.postMessage(
-        JSON.stringify({ type: "vesti:ready" }),
-        "*"
-      );
+      window.parent?.postMessage(JSON.stringify({ type: "vesti:ready" }), "*");
     } catch {}
 
     return () => window.removeEventListener("message", listener);
@@ -114,6 +156,7 @@ export default function App() {
 
   return (
     <div style={{ width: "100%", height: "100%", overflowY: "auto" }}>
+      {/* Debug Panel: visible solo con ?vestiDebug=1 */}
       {isVestiDebug && productFromShopify && (
         <div
           style={{
@@ -144,6 +187,7 @@ export default function App() {
       )}
 
       {isSizeGuideMode ? (
+        // mode=sizeguide: esperamos el producto real del loader
         fullProductFromParent ? (
           <ProductPageVestiDemo
             productFromShopify={productFromShopify ?? undefined}
@@ -155,6 +199,7 @@ export default function App() {
           </div>
         )
       ) : (
+        // modo dev / web normal
         <ProductPageVestiDemo />
       )}
     </div>
