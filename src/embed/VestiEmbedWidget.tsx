@@ -518,7 +518,7 @@ const fitUiForUi = useMemo(() => {
     if (serialized === lastPayloadRef.current) return;
     lastPayloadRef.current = serialized;
     onRecomendacion(payload);
-  }, [fitUi, rec, user, prenda, onRecomendacion]);
+  }, [fitUiForUi, rec, user, prenda, onRecomendacion]);
 
   const handleChange =
     (field: keyof Measurements) => (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -554,9 +554,9 @@ const handleShoeSizeValueChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 
   const relevantLengths =
     viewMode === "bottom"
-      ? (fitUi?.lengths ?? []).filter((lz: any) => lz.zone === "largoPierna")
+      ? (fitUiForUi?.lengths ?? []).filter((lz: any) => lz.zone === "largoPierna")
       : viewMode === "top"
-      ? (fitUi?.lengths ?? []).filter((lz: any) => lz.zone === "largoTorso")
+      ? (fitUiForUi?.lengths ?? []).filter((lz: any) => lz.zone === "largoTorso")
       : [];
 
   const hasLengthAlert = relevantLengths.some((lz: any) => (lz?.status ?? "") !== "Perfecto");
@@ -595,8 +595,8 @@ const handleShoeSizeValueChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       : "Revisá las zonas clave del calce antes de decidir tu talle final.";
 
   // Badges por zona (modo app/demo)
-  const allWidths = (fitUi as any)?.widths ?? [];
-  const allLengths = (fitUi as any)?.lengths ?? [];
+  const allWidths = (fitUiForUi as any)?.widths ?? [];
+  const allLengths = (fitUiForUi as any)?.lengths ?? [];
 
   let widthBadges = allWidths;
   let lengthBadges = allLengths;
@@ -613,7 +613,7 @@ const handleShoeSizeValueChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     lengthBadges = [];
   }
 
-  const shoeChip = viewMode === "shoes" ? shoeOverlayFromFit(fitUi, footLength) : null;
+  const shoeChip = viewMode === "shoes" ? shoeOverlayFromFit(fitUiForUi, footLength) : null;
   const shoeChipBorder =
     shoeChip?.statusKey === "Perfecto"
       ? chipBorderColor("Perfecto")
