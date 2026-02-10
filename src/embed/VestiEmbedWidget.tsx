@@ -19,6 +19,7 @@ type VestiEmbedProps = {
     recommendation: ReturnType<typeof makeRecommendation>;
     user: Measurements;
     garment: Garment;
+    mannequinGender: "M" | "F";
   }) => void;
 };
 
@@ -465,13 +466,14 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
       recommendation: rec,
       user,
       garment: prenda,
+      mannequinGender,
     };
 
     const serialized = JSON.stringify(payload);
     if (serialized === lastPayloadRef.current) return;
     lastPayloadRef.current = serialized;
     onRecomendacion(payload);
-  }, [fitUi, rec, user, prenda, onRecomendacion]);
+  }, [fitUi, rec, user, prenda, mannequinGender, onRecomendacion]);
 
   const handleChange =
     (field: keyof Measurements) => (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -483,20 +485,20 @@ export const VestiEmbedWidget: React.FC<VestiEmbedProps> = ({
     const val = Number(String(e.target.value).replace(",", "."));
     setFootLength(isNaN(val) ? 0 : val);
   };
-const handleShoeSystemChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-  const system = e.target.value as "ARG" | "EUR" | "USA";
-  setShoeSizeSystem(system);
-  const cm = shoeSizeToFootLengthCm({ system, value: shoeSizeValue, gender: mannequinGender });
-  setFootLength(cm);
-};
+  const handleShoeSystemChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const system = e.target.value as "ARG" | "EUR" | "USA";
+    setShoeSizeSystem(system);
+    const cm = shoeSizeToFootLengthCm({ system, value: shoeSizeValue, gender: mannequinGender });
+    setFootLength(cm);
+  };
 
-const handleShoeSizeValueChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-  const val = Number(String(e.target.value).replace(",", "."));
-  const value = isNaN(val) ? 0 : val;
-  setShoeSizeValue(value);
-  const cm = shoeSizeToFootLengthCm({ system: shoeSizeSystem, value, gender: mannequinGender });
-  setFootLength(cm);
-};
+  const handleShoeSizeValueChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = Number(String(e.target.value).replace(",", "."));
+    const value = isNaN(val) ? 0 : val;
+    setShoeSizeValue(value);
+    const cm = shoeSizeToFootLengthCm({ system: shoeSizeSystem, value, gender: mannequinGender });
+    setFootLength(cm);
+  };
 
 
   // UI recomendación (modo app/demo)

@@ -548,6 +548,24 @@ const [shoeSystem, setShoeSystem] = useState<ShoeSystem>("ARG");
     if (!data) return;
 
     const { fit, recommendation, garment } = data;
+    const normSize = (s: any) =>
+      String(s ?? "")
+        .toUpperCase()
+        .replace(/\s+/g, "");
+    const SIZE_ORDER = ["XXS", "XS", "S", "M", "L", "XL", "XXL", "3XL", "4XL", "5XL"];
+    const sizeRank = (s: any) => {
+      const n = normSize(s);
+      const idx = SIZE_ORDER.indexOf(n);
+      return idx === -1 ? 999 : idx;
+    };
+    // Usamos un orden estable de talles (independiente del orden que venga de Shopify)
+    const orderedGarmentOptions = [...garmentOptions].sort((a: any, b: any) => {
+      const ra = sizeRank(a?.sizeLabel);
+      const rb = sizeRank(b?.sizeLabel);
+      if (ra !== rb) return ra - rb;
+      return String(a?.sizeLabel ?? "").localeCompare(String(b?.sizeLabel ?? ""));
+    });
+
 
     const tallaActual =
       (garment && (garment as DemoGarment).sizeLabel) ||
@@ -581,30 +599,112 @@ const [shoeSystem, setShoeSystem] = useState<ShoeSystem>("ARG");
         ? rawTag
         : "OK";
 
-    let tallaSugerida = tallaActual;
+    // --- Política de decisión / mensajes (Pants): evitar contradicciones Cintura vs Cadera ---
+const mannequinGender: "M" | "F" = (data?.mannequinGender as any) === "F" ? "F" : "M";
+const isPants = String(effectiveCategory ?? "").toLowerCase() === "pants";
 
-    const currentId =
-      (garment && (garment as DemoGarment).id) || selectedGarment?.id;
-    const currentIndex = garmentOptions.findIndex((g) => String(g.id) === String(currentId));
+const evalHipRisk = (gar: any, userHip: number) => {
+  const garmentHip = Number(gar?.measures?.cadera ?? 0);
+  if (!(userHip > 0 && garmentHip > 0)) return null;
 
-    if (currentIndex >= 0) {
-      if (
-        tagNormalizado === "SIZE_UP" &&
-        currentIndex < garmentOptions.length - 1
-      ) {
-        tallaSugerida = garmentOptions[currentIndex + 1].sizeLabel;
-      } else if (tagNormalizado === "SIZE_DOWN" && currentIndex > 0) {
-        tallaSugerida = garmentOptions[currentIndex - 1].sizeLabel;
-      }
+  const presetRaw = String(gar?.easePreset ?? "regular").toLowerCase();
+  const preset =
+    presetRaw === "slim" || presetRaw === "regular" || presetRaw === "oversize"
+      ? presetRaw
+      : "regular";
+
+  const stretchPct = Number(gar?.stretchPct ?? 0);
+  const stretch = Number.isFinite(stretchPct) ? stretchPct / 100 : 0;
+
+  const effectiveHip = garmentHip * (1 + stretch);
+  const delta = effectiveHip - userHip; // + holgura, - ajustado
+
+  const warnTh = preset === "slim" ? 3 : 2;
+  const dangerTh = preset === "slim" ? 1 : 0;
+
+  const level =
+    delta < dangerTh ? ("danger" as const) : delta < warnTh ? ("warning" as const) : ("ok" as const);
+
+  return { level, delta, preset };
+};
+
+let tallaSugerida = tallaActual;
+
+const currentId =
+  (garment && (garment as DemoGarment).id) || selectedGarment?.id;
+const currentIndex = garmentOptions.findIndex((g) => String(g.id) === String(currentId));
+
+// Hip risk hoy (talle actual) y en el talle anterior (para decidir si sugerir bajar es válido)
+const userHip = Number((perfil as any)?.cadera ?? 0);
+const hipNow = evalHipRisk(garment ?? selectedGarment, userHip);
+const hipDown = currentIndex > 0 ? evalHipRisk(orderedGarmentOptions[currentIndex - 1], userHip) : null;
+
+// Tag "base" que viene del motor (cintura manda en el motor)
+const baseTag = tagNormalizado;
+
+// Tag final (UI): aplica reglas de negocio para no contradecirse con cadera
+let finalTag: "OK" | "SIZE_UP" | "SIZE_DOWN" | "CHECK_LENGTH" = baseTag;
+
+// 1) Maniquí F: en pants, CADERA manda (decisión).
+// - Permitimos sugerir bajar SOLO si al bajar la cadera sigue OK (no reintroduce riesgo).
+// - Si hay riesgo real en cadera, sí sugerimos subir (aunque la cintura "dé bien").
+if (isPants && mannequinGender === "F") {
+  if (baseTag === "SIZE_DOWN") {
+    if (hipDown && (hipDown.level === "warning" || hipDown.level === "danger")) {
+      finalTag = "OK";
+    } else {
+      finalTag = "SIZE_DOWN";
     }
+  }
 
-    const mensaje = buildMensaje(tagNormalizado, effectiveCategory);
+  if (hipNow?.level === "danger" && currentIndex >= 0 && currentIndex < orderedGarmentOptions.length - 1) {
+    finalTag = "SIZE_UP";
+  }
+}
+
+// 2) Maniquí M: cintura manda, PERO no sugerimos bajar si eso reintroduce riesgo en cadera.
+if (isPants && mannequinGender === "M") {
+  if (baseTag === "SIZE_DOWN" && hipDown && (hipDown.level === "warning" || hipDown.level === "danger")) {
+    finalTag = "OK";
+  }
+}
+
+// 3) Resolver talla sugerida según finalTag
+if (currentIndex >= 0) {
+  if (finalTag === "SIZE_UP" && currentIndex < orderedGarmentOptions.length - 1) {
+    tallaSugerida = orderedGarmentOptions[currentIndex + 1].sizeLabel;
+  } else if (finalTag === "SIZE_DOWN" && currentIndex > 0) {
+    tallaSugerida = orderedGarmentOptions[currentIndex - 1].sizeLabel;
+  }
+}
+
+// 4) Mensaje final (copies cerrados)
+let mensaje = buildMensaje(finalTag, effectiveCategory);
+
+if (isPants) {
+  // Caso: venías de subir por cadera y ahora la cintura queda holgada -> NO confundir con "bajá".
+  if (finalTag === "OK" && baseTag === "SIZE_DOWN") {
+    if (mannequinGender === "F") {
+      mensaje =
+        "Priorizamos la cadera para asegurar comodidad. La cintura puede quedar más holgada, lo cual es normal en este talle.";
+    } else {
+      mensaje =
+        "Este talle prioriza la cadera (zona sensible). La cintura puede quedar algo holgada, lo cual es normal si elegís comodidad en cadera.";
+    }
+  }
+
+  // Maniquí F: cuando hay riesgo real en cadera, el copy debe explicitar prioridad.
+  if (mannequinGender === "F" && finalTag === "SIZE_UP") {
+    mensaje =
+      "Priorizamos la cadera para asegurar comodidad. Por cadera, este talle puede no pasar o quedar muy ajustado. Sugerencia: probá un talle más.";
+  }
+}
 
     setLastRec({
       tallaSugerida,
       resumenZonas: resumenZonas || "Aún sin datos de calce.",
       mensaje,
-      tag: tagNormalizado,
+      tag: finalTag,
     });
   };
 
@@ -678,17 +778,16 @@ const [shoeSystem, setShoeSystem] = useState<ShoeSystem>("ARG");
   if (isSizeGuideMode) {
     const talleActualArg = selectedGarment?.sizeLabel ?? "—";
     const isShoes = String(effectiveCategory).toLowerCase() === "shoes";
-    const effectiveRec = displayRec || lastRec;
-    const suggestedArg = (effectiveRec?.tallaSugerida ?? talleActualArg) as any;
+    const suggestedArg = (lastRec?.tallaSugerida ?? talleActualArg) as any;
     const talleSugerido = isShoes
       ? argToSystemLabel(String(suggestedArg), shoeSystem)
       : String(suggestedArg);
 
     const mensaje = isShoes
-      ? buildMensaje(String(effectiveRec?.tag ?? "OK"), effectiveCategory)
-      : effectiveRec?.mensaje ?? "Cargando recomendación…";
+      ? buildMensaje(String(lastRec?.tag ?? "OK"), effectiveCategory)
+      : lastRec?.mensaje ?? "Cargando recomendación…";
 
-    const resumen = effectiveRec?.resumenZonas ?? "";
+    const resumen = lastRec?.resumenZonas ?? "";
 
     const chipsBase = resumen ? resumen.split(" · ").filter(Boolean) : [];
 
@@ -741,64 +840,6 @@ const [shoeSystem, setShoeSystem] = useState<ShoeSystem>("ARG");
       if (delta < warnTh) return { level: "warning" as const, delta, preset };
       return null;
     }, [effectiveCategory, perfil, selectedGarment]);
-
-    // ---
-    // Regla clave (Pants): si la cadera queda *Ajustada* (danger) en el talle que el
-    // usuario está comparando, el "talle ideal" debe subir 1 talle.
-    // Esto evita incoherencias del tipo: "te recomiendo subir" pero el headline sigue
-    // mostrando el talle actual.
-    const sizeOrder = useMemo(() => {
-      const base = ["XS", "S", "M", "L", "XL", "XXL"];
-      const fromVariants = (variants || [])
-        .map((v: any) => String(v.sizeLabel || "").trim())
-        .filter(Boolean);
-      if (fromVariants.length === 0) return base;
-      // mantener el orden base cuando se pueda; lo que no esté, va al final
-      const set = new Set(fromVariants);
-      const ordered = base.filter((s) => set.has(s));
-      const rest = fromVariants.filter((s) => !ordered.includes(s));
-      return [...ordered, ...rest];
-    }, [variants]);
-
-    const nextSizeLabel = (label: string) => {
-      const idx = sizeOrder.indexOf(label);
-      if (idx < 0) return label;
-      return sizeOrder[Math.min(idx + 1, sizeOrder.length - 1)];
-    };
-
-    const displayRec = useMemo(() => {
-      if (!lastRec) return null;
-
-      // Solo aplicamos el override cuando el problema existe: cadera Ajustada.
-      if (effectiveCategory !== "pants") return lastRec;
-      if (!hipAlert || hipAlert.level !== "danger") return lastRec;
-
-      const current = lastRec.tallaComparada || selectedSize;
-      const bumped = nextSizeLabel(current);
-      if (bumped === current) return lastRec;
-
-      return {
-        ...lastRec,
-        tallaSugerida: bumped,
-        // Mensaje principal: priorizar cadera y evitar hablar de largo si hay warning fuerte.
-        mensaje:
-          "Por cadera, te recomendamos un talle más para asegurar comodidad. La cintura puede quedar algo más holgada, lo cual es normal.",
-      };
-    }, [
-      lastRec,
-      effectiveCategory,
-      hipAlert,
-      selectedSize,
-      sizeOrder,
-      // nextSizeLabel uses sizeOrder; safe
-    ]);
-
-    // Si la cadera es el problema principal (danger), ocultamos chips de largo para
-    // no desviar la atención con "Largo" cuando hay una advertencia fuerte.
-    const chipsDisplay = useMemo(() => {
-      if (hipAlert?.level !== "danger") return chips;
-      return chips.filter((c) => !String(c).toLowerCase().includes("largo"));
-    }, [chips, hipAlert]);
 
     const chipTone = (statusRaw: string) => {
       const s = String(statusRaw || "").trim();
@@ -1085,7 +1126,7 @@ const [shoeSystem, setShoeSystem] = useState<ShoeSystem>("ARG");
 
           {chips.length > 0 && (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
-              {chipsDisplay.map((c, i) => {
+              {chips.map((c, i) => {
                 const [rawZone, rawStatus] = String(c).split(":");
                 const zone = String(rawZone || "").trim();
                 const status = String(rawStatus || "").trim();
