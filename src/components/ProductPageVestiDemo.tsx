@@ -627,27 +627,29 @@ const baseTag = tagNormalizado;
 // Tag final (UI): aplica reglas de negocio para no contradecirse con cadera
 let finalTag: "OK" | "SIZE_UP" | "SIZE_DOWN" | "CHECK_LENGTH" = baseTag;
 
-// 1) Maniquí F: en pants, CADERA manda (decisión). Nunca sugerimos bajar por cintura.
+// 1) Maniquí F: en pants, CADERA manda (decisión).
+// - Permitimos sugerir bajar SOLO si al bajar NO aparece riesgo en cadera.
+// - Si por cadera hay riesgo real, sugerimos subir (aunque cintura "dé bien").
 if (isPants && mannequinGender === "F") {
-  if (baseTag === "SIZE_DOWN") finalTag = "OK";
+  if (baseTag === "SIZE_DOWN") {
+    if (hipDown && (hipDown.level === "warning" || hipDown.level === "danger")) {
+      finalTag = "OK";
+    } // si hipDown es seguro, dejamos SIZE_DOWN tal cual (bajar es válido)
+  }
 
-  // Si por cadera está en riesgo real, sí sugerimos subir (aunque cintura "dé bien").
   if (hipNow?.level === "danger" && currentIndex >= 0 && currentIndex < garmentOptions.length - 1) {
     finalTag = "SIZE_UP";
   }
 }
 
-// 2) Maniquí M: cintura manda, PERO no sugerimos bajar si eso reintroduce riesgo en cadera.
+// 2) Maniquí M: cintura manda, PERO
+// - si al bajar reintroducís riesgo en cadera, NO sugerimos bajar.
+// - si en el talle actual hay riesgo real de cadera, sugerimos subir (prioridad cadera).
 if (isPants && mannequinGender === "M") {
-  // En M: si cintura sugiere bajar pero eso reintroduce riesgo de cadera, no bajamos.
-  if (baseTag === "SIZE_DOWN" && hipDown && (hipDown.level === "warning" || hipDown.level === "danger")) {
-    finalTag = "OK";
-  }
-
-  // Si en el talle actual la cadera queda *ajustada* (danger), sugerimos subir un talle
-  // aunque la cintura esté OK / CHECK_LENGTH.
-  if (baseTag !== "SIZE_DOWN" && hipNow && hipNow.level === "danger" && currentIndex >= 0 && currentIndex < garmentOptions.length - 1) {
+  if (hipNow?.level === "danger" && currentIndex >= 0 && currentIndex < garmentOptions.length - 1) {
     finalTag = "SIZE_UP";
+  } else if (baseTag === "SIZE_DOWN" && hipDown && (hipDown.level === "warning" || hipDown.level === "danger")) {
+    finalTag = "OK";
   }
 }
 
@@ -676,7 +678,7 @@ if (isPants) {
   }
 
   // Maniquí F: cuando hay riesgo real en cadera, el copy debe explicitar prioridad.
-  if (mannequinGender === "F" && finalTag === "SIZE_UP") {
+  if (finalTag === "SIZE_UP" && hipNow?.level === "danger") {
     mensaje =
       "Priorizamos la cadera para asegurar comodidad. Por cadera, este talle puede no pasar o quedar muy ajustado. Sugerencia: probá un talle más.";
   }
