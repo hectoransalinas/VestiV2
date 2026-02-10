@@ -51,6 +51,45 @@ function safeParseJson(input: any): any | null {
   return null;
 }
 
+
+function getVestiProductCandidate(payload: any): any | null {
+  if (!payload) return null;
+
+  // soporta varios formatos de loader:
+  // 1) { type: "vesti:product", product: {...} }
+  // 2) { type: "VESTI_PRODUCT_READY", payload: {...} }
+  // 3) { type: "...", data: {...} }
+  const t = payload.type;
+
+  const candidate =
+    payload.product ?? payload.payload ?? payload.data ?? payload.detail ?? null;
+
+  if (!candidate) return null;
+
+  // Si no tiene forma de producto, igual lo dejamos pasar; la pantalla demo valida.
+  // Tipos aceptados (si no hay type, igual aceptamos si viene "category" o "measurements")
+  const typeOk =
+    t === "vesti:product" ||
+    t === "VESTI_PRODUCT_READY" ||
+    t === "vesti:productReady" ||
+    t === "VESTI_PRODUCT" ||
+    t === "PRODUCT_READY" ||
+    t === "vesti:product_ready" ||
+    t === "vesti:product:ready" ||
+    t === "VESTI:PRODUCT" ||
+    t == null;
+
+  const shapeOk =
+    candidate.category != null || candidate.measurements != null || candidate.handle != null;
+
+  if (typeOk && shapeOk) return candidate;
+
+  // Último recurso: si parece producto (tiene title/handle/measurements), lo aceptamos.
+  if (shapeOk) return candidate;
+
+  return null;
+}
+
 /** Listener global (fuera de React) para capturar mensajes tempranos */
 (function attachEarlyListener() {
   if (typeof window === "undefined") return;
@@ -62,8 +101,9 @@ function safeParseJson(input: any): any | null {
     const payload = safeParseJson(event.data);
     if (!payload) return;
 
-    if (payload.type === "vesti:product" && payload.product) {
-      window.__VESTI_LAST_PRODUCT__ = payload.product as FullProductFromParent;
+    const cand = getVestiProductCandidate(payload);
+    if (cand) {
+      window.__VESTI_LAST_PRODUCT__ = cand as FullProductFromParent;
     }
   });
 })();
@@ -125,8 +165,9 @@ export default function App() {
       const payload = safeParseJson(event.data);
       if (!payload) return;
 
-      if (payload.type === "vesti:product" && payload.product) {
-        const p = payload.product as FullProductFromParent;
+      const cand = getVestiProductCandidate(payload);
+      if (cand) {
+        const p = cand as FullProductFromParent;
         window.__VESTI_LAST_PRODUCT__ = p;
         setFullProductFromParent(p);
 
@@ -141,6 +182,7 @@ export default function App() {
             colorName: prev?.colorName ?? p.colorName ?? null,
           }));
         }
+      }
       }
     };
 
