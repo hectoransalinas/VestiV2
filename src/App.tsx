@@ -1,5 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import ProductPageVestiDemo from "./components/ProductPageVestiDemo";
+
+/**
+ * App.tsx (sizeguide embed)
+ * - Oculta el panel de debug por defecto (solo ?vestiDebug=1)
+ * - Recibe el producto real por postMessage desde el loader de Shopify
+ * - ✅ Fix: cachea el último producto recibido a nivel window para evitar race condition
+ *   (si el parent envía vesti:product ANTES de que React monte, igual lo capturamos)
+ */
 
 type ProductFromShopify = {
   productId?: string | null;
@@ -7,64 +15,83 @@ type ProductFromShopify = {
   productTitle?: string | null;
   shop?: string | null;
   imageUrl?: string | null;
-  price?: string | null; // lo manejamos como string en este nivel
+  price?: string | null;
   currency?: string | null;
   colorName?: string | null;
 };
 
 type FullProductFromParent = {
-  id: string | number;
-  title: string;
-  category: string;
+  category: "upper" | "pants" | "shoes";
+  title?: string;
+  handle?: string;
   imageUrl?: string;
-  price?: number; // 👈 viene desde Shopify en centavos
+  price?: string;
   currency?: string;
   colorName?: string;
-  variants: {
-    id: string | number;
-    sizeLabel?: string;
-    measures?: {
-      hombros?: number;
-      pecho?: number;
-      cintura?: number;
-      largo_torso?: number;
-      largoTorso?: number;
-      stretch?: number;
-      ease?: string;
-    };
-    stretchPct?: number;
-    easePreset?: string;
-  }[];
+  measurements: any;
 };
 
-// ---------------------------------------
-// Leer datos básicos desde el querystring
-// (NO usamos la imageUrl de la query)
-// ---------------------------------------
-function getProductFromQuery(): ProductFromShopify | null {
-  if (typeof window === "undefined") return null;
+declare global {
+  interface Window {
+    __VESTI_LAST_PRODUCT__?: FullProductFromParent | null;
+    __VESTI_LISTENER_READY__?: boolean;
+  }
+}
 
-  const params = new URLSearchParams(window.location.search);
+function safeParseJson(input: any): any | null {
+  if (!input) return null;
+  if (typeof input === "object") return input;
+  if (typeof input === "string") {
+    try {
+      return JSON.parse(input);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/** Listener global (fuera de React) para capturar mensajes tempranos */
+(function attachEarlyListener() {
+  if (typeof window === "undefined") return;
+  if (window.__VESTI_LISTENER_READY__) return;
+
+  window.__VESTI_LISTENER_READY__ = true;
+
+  window.addEventListener("message", (event: MessageEvent) => {
+    const payload = safeParseJson(event.data);
+    if (!payload) return;
+
+    if (payload.type === "vesti:product" && payload.product) {
+      window.__VESTI_LAST_PRODUCT__ = payload.product as FullProductFromParent;
+    }
+  });
+})();
+
+function getProductFromQuery(): ProductFromShopify | null {
+  const search = typeof window !== "undefined" ? window.location.search : "";
+  const params = new URLSearchParams(search);
 
   const productId = params.get("productId");
-  const productHandle = params.get("productHandle");
-  const productTitle = params.get("productTitle");
+  const productHandle = params.get("handle") || params.get("productHandle");
+  const productTitle = params.get("title") || params.get("productTitle");
   const shop = params.get("shop");
-
+  const imageUrl = params.get("imageUrl");
   const price = params.get("price");
   const currency = params.get("currency");
   const colorName = params.get("colorName");
 
-  if (!productId && !productHandle && !productTitle && !shop) {
-    return null;
-  }
+  const hasAny =
+    productId || productHandle || productTitle || shop || imageUrl || price;
+
+  if (!hasAny) return null;
 
   return {
     productId,
     productHandle,
     productTitle,
     shop,
-    imageUrl: null, // 👈 imageUrl se completará SOLO con el loader
+    imageUrl,
     price,
     currency,
     colorName,
@@ -72,109 +99,65 @@ function getProductFromQuery(): ProductFromShopify | null {
 }
 
 export default function App() {
-  // Modo "sizeguide" (cuando se abre dentro del modal/iframe desde Shopify)
-  // El loader de Shopify agrega ?mode=sizeguide
   const search = typeof window !== "undefined" ? window.location.search : "";
-  const params = new URLSearchParams(search);
+  const params = useMemo(() => new URLSearchParams(search), [search]);
+
   const isSizeGuideMode = params.get("mode") === "sizeguide";
+  const isVestiDebug = params.get("vestiDebug") === "1";
 
   const [productFromShopify, setProductFromShopify] =
     useState<ProductFromShopify | null>(null);
-  const [fullProductFromParent, setFullProductFromParent] =
-    useState<FullProductFromParent | null>(null);
 
-  // 1) Cargar datos básicos desde la URL al montar
+  // ✅ inicializa desde el cache si el mensaje llegó antes
+  const [fullProductFromParent, setFullProductFromParent] =
+    useState<FullProductFromParent | null>(() => {
+      if (typeof window === "undefined") return null;
+      return window.__VESTI_LAST_PRODUCT__ ?? null;
+    });
+
   useEffect(() => {
     const product = getProductFromQuery();
-
-    if (product) {
-      console.log(
-        "[VestiAI] Datos de producto recibidos desde Shopify (URL):",
-        product
-      );
-    } else {
-      console.log(
-        "[VestiAI] No se recibieron datos de producto en la URL."
-      );
-    }
-
     setProductFromShopify(product);
   }, []);
 
-  // 2) Handshake con el parent (vesti-loader.js) para recibir VESTI_PRODUCT
-  //    y usar ESA imageUrl + price/currency/colorName como fuente de verdad.
   useEffect(() => {
     const listener = (event: MessageEvent) => {
-      if (!event.data) return;
+      const payload = safeParseJson(event.data);
+      if (!payload) return;
 
-      let payload: any = event.data;
+      if (payload.type === "vesti:product" && payload.product) {
+        const p = payload.product as FullProductFromParent;
+        window.__VESTI_LAST_PRODUCT__ = p;
+        setFullProductFromParent(p);
 
-      if (typeof payload === "string") {
-        try {
-          payload = JSON.parse(payload);
-        } catch {
-          return;
+        if (p?.handle || p?.title) {
+          setProductFromShopify((prev) => ({
+            ...prev,
+            productHandle: prev?.productHandle ?? p.handle ?? null,
+            productTitle: prev?.productTitle ?? p.title ?? null,
+            imageUrl: prev?.imageUrl ?? p.imageUrl ?? null,
+            price: prev?.price ?? p.price ?? null,
+            currency: prev?.currency ?? p.currency ?? null,
+            colorName: prev?.colorName ?? p.colorName ?? null,
+          }));
         }
-      }
-
-      if (payload.type === "vesti:product" && payload.payload) {
-        const fullProduct = payload.payload as FullProductFromParent;
-
-        console.log(
-          "[VestiAI] Producto completo recibido vía postMessage:",
-          fullProduct
-        );
-        setFullProductFromParent(fullProduct);
-
-        // 👇 Ahora sincronizamos también precio / moneda / color
-        setProductFromShopify((prev) => {
-          const base: ProductFromShopify =
-            prev ?? {
-              productId: null,
-              productHandle: null,
-              productTitle: fullProduct.title ?? null,
-              shop: null,
-              imageUrl: null,
-              price: null,
-              currency: null,
-              colorName: null,
-            };
-
-          // fullProduct.price viene en centavos desde Shopify (product.js)
-          const priceFromFull =
-            typeof fullProduct.price === "number"
-              ? String(Math.round(fullProduct.price / 100))
-              : null;
-
-          return {
-            ...base,
-            imageUrl: fullProduct.imageUrl || base.imageUrl,
-            price: priceFromFull ?? base.price,
-            currency: fullProduct.currency || base.currency,
-            colorName: fullProduct.colorName || base.colorName,
-          };
-        });
       }
     };
 
     window.addEventListener("message", listener);
 
+    // avisamos al parent que estamos listos (si el loader usa handshake)
     try {
-      if (window.parent && window.parent !== window) {
-        window.parent.postMessage({ type: "vesti:ready" }, "*");
-        console.log("[VestiAI] Mensaje vesti:ready enviado al parent.");
-      }
-    } catch (err) {
-      console.warn("[VestiAI] Error enviando vesti:ready:", err);
-    }
+      window.parent?.postMessage(JSON.stringify({ type: "vesti:ready" }), "*");
+    } catch {}
 
     return () => window.removeEventListener("message", listener);
   }, []);
 
   return (
     <div style={{ width: "100%", height: "100%", overflowY: "auto" }}>
-      {/* Barra de debug con info básica del producto */}
-      {productFromShopify && (
+      {/* Debug Panel: visible solo con ?vestiDebug=1 */}
+      {isVestiDebug && productFromShopify && (
         <div
           style={{
             background: "#000",
@@ -183,7 +166,7 @@ export default function App() {
             fontSize: 12,
           }}
         >
-          <strong>Vesti AI · Datos de producto desde Shopify</strong>
+          <strong>Vesti · Debug (Shopify)</strong>
           <div style={{ marginTop: 4 }}>
             <div>
               <strong>Título:</strong>{" "}
@@ -204,71 +187,20 @@ export default function App() {
       )}
 
       {isSizeGuideMode ? (
-        // IMPORTANTE:
-        // En mode=sizeguide el producto llega async por postMessage.
-        // No debemos renderizar ningún componente que asuma que existe
-        // `garment/category` antes de recibir `vesti:product`.
+        // mode=sizeguide: esperamos el producto real del loader
         fullProductFromParent ? (
           <ProductPageVestiDemo
             productFromShopify={productFromShopify ?? undefined}
             fullProductFromParent={fullProductFromParent}
           />
         ) : (
-          <div
-            style={{
-              padding: 18,
-              display: "flex",
-              flexDirection: "column",
-              gap: 10,
-              alignItems: "center",
-              justifyContent: "center",
-              minHeight: 260,
-              color: "#0f172a",
-              fontFamily:
-                "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
-            }}
-          >
-            <div style={{ fontSize: 14, fontWeight: 600 }}>
-              Cargando guía de talles…
-            </div>
-            <div style={{ fontSize: 12, color: "#64748b", maxWidth: 420, textAlign: "center" }}>
-              Estamos esperando los datos del producto desde la tienda.
-            </div>
-
-            {/* Skeleton simple para que nunca se vea “en blanco” */}
-            <div
-              style={{
-                width: "min(720px, 100%)",
-                display: "grid",
-                gridTemplateColumns: "1.2fr 1fr",
-                gap: 12,
-                marginTop: 6,
-              }}
-            >
-              <div
-                style={{
-                  height: 180,
-                  borderRadius: 16,
-                  border: "1px solid #e5e7eb",
-                  background: "linear-gradient(90deg, #f8fafc, #eef2ff, #f8fafc)",
-                }}
-              />
-              <div
-                style={{
-                  height: 180,
-                  borderRadius: 16,
-                  border: "1px solid #e5e7eb",
-                  background: "linear-gradient(90deg, #f8fafc, #f1f5f9, #f8fafc)",
-                }}
-              />
-            </div>
+          <div style={{ padding: 16, fontFamily: "system-ui" }}>
+            Cargando producto…
           </div>
         )
       ) : (
-        <ProductPageVestiDemo
-          productFromShopify={productFromShopify ?? undefined}
-          fullProductFromParent={fullProductFromParent ?? undefined}
-        />
+        // modo dev / web normal
+        <ProductPageVestiDemo />
       )}
     </div>
   );
