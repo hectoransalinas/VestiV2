@@ -1185,7 +1185,7 @@ if (isPants) {
                     <input
                       type="number"
                       value={perfil.hombros as any}
-                      onChange={(e) => setPerfil((p) => ({ ...p, hombros: Number(e.target.value) } as any))}
+                      onChange={(e) = placeholder="Ej: 44"> setPerfil((p) => ({ ...p, hombros: Number(e.target.value) } as any))}
                       style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
                     />
                   </label>
@@ -1194,7 +1194,7 @@ if (isPants) {
                     <input
                       type="number"
                       value={perfil.pecho as any}
-                      onChange={(e) => setPerfil((p) => ({ ...p, pecho: Number(e.target.value) } as any))}
+                      onChange={(e) = placeholder="Ej: 96"> setPerfil((p) => ({ ...p, pecho: Number(e.target.value) } as any))}
                       style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
                     />
                   </label>
@@ -1203,7 +1203,7 @@ if (isPants) {
                     <input
                       type="number"
                       value={perfil.cintura as any}
-                      onChange={(e) => setPerfil((p) => ({ ...p, cintura: Number(e.target.value) } as any))}
+                      onChange={(e) = placeholder="Ej: 82"> setPerfil((p) => ({ ...p, cintura: Number(e.target.value) } as any))}
                       style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
                     />
                   </label>
@@ -1212,7 +1212,7 @@ if (isPants) {
                     <input
                       type="number"
                       value={perfil.largoTorso as any}
-                      onChange={(e) => setPerfil((p) => ({ ...p, largoTorso: Number(e.target.value) } as any))}
+                      onChange={(e) = placeholder="Ej: 52"> setPerfil((p) => ({ ...p, largoTorso: Number(e.target.value) } as any))}
                       style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
                     />
                   </label>
@@ -1226,7 +1226,7 @@ if (isPants) {
                     <input
                       type="number"
                       value={perfil.cintura as any}
-                      onChange={(e) => setPerfil((p) => ({ ...p, cintura: Number(e.target.value) } as any))}
+                      onChange={(e) = placeholder="Ej: 82"> setPerfil((p) => ({ ...p, cintura: Number(e.target.value) } as any))}
                       style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
                     />
                   </label>
@@ -1235,7 +1235,7 @@ if (isPants) {
                     <input
                       type="number"
                       value={(perfil as any).cadera as any}
-                      onChange={(e) => setPerfil((p) => ({ ...p, cadera: Number(e.target.value) } as any))}
+                      onChange={(e) = placeholder="Ej: 96"> setPerfil((p) => ({ ...p, cadera: Number(e.target.value) } as any))}
                       style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
                     />
                   </label>
@@ -1244,7 +1244,7 @@ if (isPants) {
                     <input
                       type="number"
                       value={perfil.largoPierna as any}
-                      onChange={(e) => setPerfil((p) => ({ ...p, largoPierna: Number(e.target.value) } as any))}
+                      onChange={(e) = placeholder="Ej: 102"> setPerfil((p) => ({ ...p, largoPierna: Number(e.target.value) } as any))}
                       style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
                     />
                   </label>
