@@ -106,11 +106,11 @@ const DEMO_GARMENTS: DemoGarment[] = [
     category: "remera",
     sizeLabel: "S",
     measures: {
-      hombros: "",
-      pecho: "",
-      cintura: "",
-      largoTorso: "",
-      largoPierna: "",
+      hombros: 44,
+      pecho: 94,
+      cintura: 86,
+      largoTorso: 60,
+      largoPierna: 0,
       pieLargo: 0,
     },
     stretchPct: 8,
@@ -123,11 +123,11 @@ const DEMO_GARMENTS: DemoGarment[] = [
     category: "remera",
     sizeLabel: "M",
     measures: {
-      hombros: "",
-      pecho: "",
-      cintura: "",
-      largoTorso: "",
-      largoPierna: "",
+      hombros: 46,
+      pecho: 100,
+      cintura: 92,
+      largoTorso: 62,
+      largoPierna: 0,
       pieLargo: 0,
     },
     stretchPct: 8,
@@ -140,11 +140,11 @@ const DEMO_GARMENTS: DemoGarment[] = [
     category: "remera",
     sizeLabel: "L",
     measures: {
-      hombros: "",
-      pecho: "",
-      cintura: "",
-      largoTorso: "",
-      largoPierna: "",
+      hombros: 48,
+      pecho: 108,
+      cintura: 100,
+      largoTorso: 64,
+      largoPierna: 0,
       pieLargo: 0,
     },
     stretchPct: 8,
@@ -157,11 +157,11 @@ const DEMO_GARMENTS: DemoGarment[] = [
     category: "remera",
     sizeLabel: "XL",
     measures: {
-      hombros: "",
-      pecho: "",
-      cintura: "",
-      largoTorso: "",
-      largoPierna: "",
+      hombros: 50,
+      pecho: 116,
+      cintura: 108,
+      largoTorso: 66,
+      largoPierna: 0,
       pieLargo: 0,
     },
     stretchPct: 8,
@@ -322,12 +322,12 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
 
   // Perfil editable (medidas del usuario). Se pasa al widget para recalcular recomendación y overlays.
   const [perfil, setPerfil] = useState<Measurements>(() => ({
-    hombros: "",
-    pecho: "",
-    cintura: "",
-    largoTorso: "",
-    largoPierna: "",
-    pieLargo: 25.8,
+    hombros: 44,
+    pecho: 96,
+    cintura: 82,
+    largoTorso: 52,
+    largoPierna: 102,
+    pieLargo: "",
   } as any));
 
   const [openMeasures, setOpenMeasures] = useState<boolean>(false);
@@ -1259,7 +1259,14 @@ if (isPants) {
         type="number"
         step="0.1"
         value={(perfil as any).pieLargo as any}
-        onChange={(e) => setPerfil((p) => ({ ...(p as any), pieLargo: Number(String(e.target.value).replace(",", ".")) } as any))}
+        placeholder="Ej: 25.8"
+        onChange={(e) => {
+          const raw = String(e.target.value).replace(",", ".");
+          setPerfil((p) => ({
+            ...(p as any),
+            pieLargo: raw.trim() === "" ? "" : Number(raw),
+          } as any));
+        }}
         style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
       />
     </label>
