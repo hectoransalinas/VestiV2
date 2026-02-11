@@ -106,10 +106,10 @@ const DEMO_GARMENTS: DemoGarment[] = [
     category: "remera",
     sizeLabel: "S",
     measures: {
-      hombros: "",
-      pecho: "",
+      hombros: 44,
+      pecho: 94,
       cintura: "",
-      largoTorso: "",
+      largoTorso: 60,
       largoPierna: "",
       pieLargo: 0,
     },
@@ -123,10 +123,10 @@ const DEMO_GARMENTS: DemoGarment[] = [
     category: "remera",
     sizeLabel: "M",
     measures: {
-      hombros: "",
-      pecho: "",
+      hombros: 46,
+      pecho: 100,
       cintura: "",
-      largoTorso: "",
+      largoTorso: 62,
       largoPierna: "",
       pieLargo: 0,
     },
@@ -140,10 +140,10 @@ const DEMO_GARMENTS: DemoGarment[] = [
     category: "remera",
     sizeLabel: "L",
     measures: {
-      hombros: "",
-      pecho: "",
+      hombros: 48,
+      pecho: 108,
       cintura: "",
-      largoTorso: "",
+      largoTorso: 64,
       largoPierna: "",
       pieLargo: 0,
     },
@@ -157,10 +157,10 @@ const DEMO_GARMENTS: DemoGarment[] = [
     category: "remera",
     sizeLabel: "XL",
     measures: {
-      hombros: "",
-      pecho: "",
+      hombros: 50,
+      pecho: 116,
       cintura: "",
-      largoTorso: "",
+      largoTorso: 66,
       largoPierna: "",
       pieLargo: 0,
     },
@@ -322,12 +322,12 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
 
   // Perfil editable (medidas del usuario). Se pasa al widget para recalcular recomendación y overlays.
   const [perfil, setPerfil] = useState<Measurements>(() => ({
-    hombros: "",
-    pecho: "",
+    hombros: 44,
+    pecho: 96,
     cintura: "",
-    largoTorso: "",
+    largoTorso: 52,
     largoPierna: "",
-    pieLargo: 25.8,
+    pieLargo: "",
   } as any));
 
   const [openMeasures, setOpenMeasures] = useState<boolean>(false);
@@ -1259,7 +1259,13 @@ if (isPants) {
         type="number"
         step="0.1"
         value={(perfil as any).pieLargo as any}
-        onChange={(e) => setPerfil((p) => ({ ...(p as any), pieLargo: Number(String(e.target.value).replace(",", ".")) } as any))}
+        onChange={(e) => {
+                          const raw = String(e.target.value).replace(",", ".");
+                          setPerfil((p) => ({
+                            ...(p as any),
+                            pieLargo: raw.trim() === "" ? "" : Number(raw),
+                          } as any));
+                        }}
         style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
       />
     </label>
