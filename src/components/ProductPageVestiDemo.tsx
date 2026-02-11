@@ -108,9 +108,9 @@ const DEMO_GARMENTS: DemoGarment[] = [
     measures: {
       hombros: 44,
       pecho: 94,
-      cintura: 86,
+      cintura: "",
       largoTorso: 60,
-      largoPierna: 0,
+      largoPierna: "",
       pieLargo: 0,
     },
     stretchPct: 8,
@@ -125,9 +125,9 @@ const DEMO_GARMENTS: DemoGarment[] = [
     measures: {
       hombros: 46,
       pecho: 100,
-      cintura: 92,
+      cintura: "",
       largoTorso: 62,
-      largoPierna: 0,
+      largoPierna: "",
       pieLargo: 0,
     },
     stretchPct: 8,
@@ -142,9 +142,9 @@ const DEMO_GARMENTS: DemoGarment[] = [
     measures: {
       hombros: 48,
       pecho: 108,
-      cintura: 100,
+      cintura: "",
       largoTorso: 64,
-      largoPierna: 0,
+      largoPierna: "",
       pieLargo: 0,
     },
     stretchPct: 8,
@@ -159,9 +159,9 @@ const DEMO_GARMENTS: DemoGarment[] = [
     measures: {
       hombros: 50,
       pecho: 116,
-      cintura: 108,
+      cintura: "",
       largoTorso: 66,
-      largoPierna: 0,
+      largoPierna: "",
       pieLargo: 0,
     },
     stretchPct: 8,
@@ -324,9 +324,9 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
   const [perfil, setPerfil] = useState<Measurements>(() => ({
     hombros: 44,
     pecho: 96,
-    cintura: 82,
+    cintura: "",
     largoTorso: 52,
-    largoPierna: 102,
+    largoPierna: "",
     pieLargo: 25.8,
   } as any));
 
