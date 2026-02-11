@@ -106,10 +106,10 @@ const DEMO_GARMENTS: DemoGarment[] = [
     category: "remera",
     sizeLabel: "S",
     measures: {
-      hombros: 44,
-      pecho: 94,
+      hombros: "",
+      pecho: "",
       cintura: "",
-      largoTorso: 60,
+      largoTorso: "",
       largoPierna: "",
       pieLargo: 0,
     },
@@ -123,10 +123,10 @@ const DEMO_GARMENTS: DemoGarment[] = [
     category: "remera",
     sizeLabel: "M",
     measures: {
-      hombros: 46,
-      pecho: 100,
+      hombros: "",
+      pecho: "",
       cintura: "",
-      largoTorso: 62,
+      largoTorso: "",
       largoPierna: "",
       pieLargo: 0,
     },
@@ -140,10 +140,10 @@ const DEMO_GARMENTS: DemoGarment[] = [
     category: "remera",
     sizeLabel: "L",
     measures: {
-      hombros: 48,
-      pecho: 108,
+      hombros: "",
+      pecho: "",
       cintura: "",
-      largoTorso: 64,
+      largoTorso: "",
       largoPierna: "",
       pieLargo: 0,
     },
@@ -157,10 +157,10 @@ const DEMO_GARMENTS: DemoGarment[] = [
     category: "remera",
     sizeLabel: "XL",
     measures: {
-      hombros: 50,
-      pecho: 116,
+      hombros: "",
+      pecho: "",
       cintura: "",
-      largoTorso: 66,
+      largoTorso: "",
       largoPierna: "",
       pieLargo: 0,
     },
@@ -322,10 +322,10 @@ export const ProductPageVestiDemo: React.FC<ProductPageVestiDemoProps> = ({
 
   // Perfil editable (medidas del usuario). Se pasa al widget para recalcular recomendación y overlays.
   const [perfil, setPerfil] = useState<Measurements>(() => ({
-    hombros: 44,
-    pecho: 96,
+    hombros: "",
+    pecho: "",
     cintura: "",
-    largoTorso: 52,
+    largoTorso: "",
     largoPierna: "",
     pieLargo: "",
   } as any));
@@ -1184,7 +1184,6 @@ if (isPants) {
                     <span style={{ color: "#6b7280" }}>Hombros (cm)</span>
                     <input
                       type="number"
-                      placeholder="Ej: 44"
                       value={perfil.hombros as any}
                       onChange={(e) => setPerfil((p) => ({ ...p, hombros: Number(e.target.value) } as any))}
                       style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
@@ -1194,7 +1193,6 @@ if (isPants) {
                     <span style={{ color: "#6b7280" }}>Pecho (cm)</span>
                     <input
                       type="number"
-                      placeholder="Ej: 96"
                       value={perfil.pecho as any}
                       onChange={(e) => setPerfil((p) => ({ ...p, pecho: Number(e.target.value) } as any))}
                       style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
@@ -1204,7 +1202,6 @@ if (isPants) {
                     <span style={{ color: "#6b7280" }}>Cintura (cm)</span>
                     <input
                       type="number"
-                      placeholder="Ej: 82"
                       value={perfil.cintura as any}
                       onChange={(e) => setPerfil((p) => ({ ...p, cintura: Number(e.target.value) } as any))}
                       style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
@@ -1214,7 +1211,6 @@ if (isPants) {
                     <span style={{ color: "#6b7280" }}>Largo torso (cm)</span>
                     <input
                       type="number"
-                      placeholder="Ej: 52"
                       value={perfil.largoTorso as any}
                       onChange={(e) => setPerfil((p) => ({ ...p, largoTorso: Number(e.target.value) } as any))}
                       style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
@@ -1247,7 +1243,6 @@ if (isPants) {
                     <span style={{ color: "#6b7280" }}>Largo pierna (cm)</span>
                     <input
                       type="number"
-                      placeholder="Ej: 102"
                       value={perfil.largoPierna as any}
                       onChange={(e) => setPerfil((p) => ({ ...p, largoPierna: Number(e.target.value) } as any))}
                       style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
@@ -1264,13 +1259,14 @@ if (isPants) {
         type="number"
         step="0.1"
         value={(perfil as any).pieLargo as any}
+        placeholder="Ej: 25.8"
         onChange={(e) => {
-                          const raw = String(e.target.value).replace(",", ".");
-                          setPerfil((p) => ({
-                            ...(p as any),
-                            pieLargo: raw.trim() === "" ? "" : Number(raw),
-                          } as any));
-                        }}
+          const raw = String(e.target.value).replace(",", ".");
+          setPerfil((p) => ({
+            ...(p as any),
+            pieLargo: raw.trim() === "" ? "" : Number(raw),
+          } as any));
+        }}
         style={{ borderRadius: 10, border: "1px solid #e5e7eb", padding: "8px 10px", width: "100%", minWidth: 0, boxSizing: "border-box" }}
       />
     </label>
